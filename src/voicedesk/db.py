@@ -5,10 +5,12 @@ CREATE TABLE IF NOT EXISTS appointments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     patient_name TEXT NOT NULL,
     phone TEXT NOT NULL,
-    slot_iso TEXT NOT NULL UNIQUE,
+    slot_iso TEXT NOT NULL,
     reason TEXT,
     status TEXT NOT NULL DEFAULT 'booked'
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_booked_slot
+    ON appointments(slot_iso) WHERE status = 'booked';
 """
 
 

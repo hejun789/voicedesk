@@ -1,7 +1,6 @@
 import json
 import os
 from voicedesk.llm import Message, ToolCall
-from voicedesk.registry import TOOL_SCHEMAS
 
 
 def _to_message(choice) -> Message:

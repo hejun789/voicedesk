@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import date, datetime
+from datetime import date
 
 OPEN_HOURS = range(9, 17)  # 09:00 .. 16:00 inclusive
 

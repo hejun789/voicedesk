@@ -34,3 +34,17 @@ def test_agent_stops_at_iteration_cap(db):
     agent = Agent(db, FakeLLM(looping))
     reply = agent.respond("slots?")
     assert isinstance(reply, str) and len(reply) > 0  # returns a fallback, no crash
+
+
+def test_agent_survives_tool_exception(db):
+    llm = FakeLLM([
+        Message(content=None, tool_calls=[
+            ToolCall(id="1", name="book", arguments={
+                "patient_name": "Jane", "phone": "5551234",
+                "slot_iso": "2026-07-13T09:00"})]),  # missing required "reason" -> KeyError
+        Message(content="Sorry, let me get a human.", tool_calls=[]),
+    ])
+    agent = Agent(db, llm)
+    reply = agent.respond("book me monday 9am, Jane, 5551234")
+    assert isinstance(reply, str)
+    assert reply == "Sorry, let me get a human."

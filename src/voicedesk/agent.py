@@ -42,7 +42,10 @@ class Agent:
                 ],
             })
             for tc in msg.tool_calls:
-                result = dispatch(self.conn, tc.name, tc.arguments)
+                try:
+                    result = dispatch(self.conn, tc.name, tc.arguments)
+                except Exception as e:
+                    result = {"ok": False, "error": "tool_error", "detail": str(e)}
                 self.messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
