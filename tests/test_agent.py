@@ -1,11 +1,25 @@
-from voicedesk.llm import FakeLLM, Message, ToolCall
-from voicedesk.agent import Agent
+from voicedesk.llm import FakeLLM, LLMError, Message, ToolCall
+from voicedesk.agent import Agent, _FALLBACK
+
+
+class _RaisingLLM:
+    """LLMClient double whose complete() always raises LLMError."""
+
+    def complete(self, messages, tools):
+        raise LLMError("groq 400 tool_use_failed after retries")
 
 
 def test_agent_returns_plain_text(db):
     llm = FakeLLM([Message(content="Hello! How can I help?", tool_calls=[])])
     agent = Agent(db, llm)
     assert agent.respond("hi") == "Hello! How can I help?"
+
+
+def test_agent_escalates_on_llm_error(db):
+    # A persistent LLM/API failure must degrade to the escalation reply,
+    # never crash the caller (the REPL).
+    agent = Agent(db, _RaisingLLM())
+    assert agent.respond("book me monday 9am") == _FALLBACK
 
 
 def test_agent_executes_tool_then_replies(db):

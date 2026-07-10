@@ -2,6 +2,12 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 
+class LLMError(Exception):
+    """Raised by an LLMClient when a completion cannot be produced
+    (API error, or a malformed generation that survived all retries).
+    The agent catches this and degrades to a graceful escalation reply."""
+
+
 @dataclass
 class ToolCall:
     id: str

@@ -1,5 +1,5 @@
 import json
-from voicedesk.llm import LLMClient, Message
+from voicedesk.llm import LLMClient, LLMError, Message
 from voicedesk.registry import TOOL_SCHEMAS, dispatch
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -27,7 +27,11 @@ class Agent:
     def respond(self, user_text: str) -> str:
         self.messages.append({"role": "user", "content": user_text})
         for _ in range(MAX_ITERS):
-            msg: Message = self.llm.complete(self.messages, TOOL_SCHEMAS)
+            try:
+                msg: Message = self.llm.complete(self.messages, TOOL_SCHEMAS)
+            except LLMError:
+                self.messages.append({"role": "assistant", "content": _FALLBACK})
+                return _FALLBACK
             if not msg.tool_calls:
                 text = msg.content or _FALLBACK
                 self.messages.append({"role": "assistant", "content": text})
