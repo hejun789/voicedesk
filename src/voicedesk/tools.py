@@ -74,3 +74,36 @@ def lookup_appt(
         }
         for r in conn.execute(sql, params)
     ]
+
+
+def cancel(conn: sqlite3.Connection, appointment_id: int) -> dict:
+    cur = conn.execute(
+        "UPDATE appointments SET status = 'cancelled' "
+        "WHERE id = ? AND status = 'booked'",
+        (appointment_id,),
+    )
+    conn.commit()
+    if cur.rowcount == 0:
+        return {"ok": False, "error": "not_found"}
+    return {"ok": True}
+
+
+def reschedule(
+    conn: sqlite3.Connection, appointment_id: int, new_slot_iso: str
+) -> dict:
+    row = conn.execute(
+        "SELECT patient_name, phone, reason FROM appointments "
+        "WHERE id = ? AND status = 'booked'",
+        (appointment_id,),
+    ).fetchone()
+    if row is None:
+        return {"ok": False, "error": "not_found"}
+    day_iso = new_slot_iso.split("T")[0]
+    if new_slot_iso not in find_slots(conn, day_iso):
+        return {"ok": False, "error": "slot_unavailable"}
+    conn.execute(
+        "UPDATE appointments SET slot_iso = ? WHERE id = ?",
+        (new_slot_iso, appointment_id),
+    )
+    conn.commit()
+    return {"ok": True, "slot_iso": new_slot_iso}
