@@ -43,3 +43,34 @@ def book(
     )
     conn.commit()
     return {"ok": True, "appointment_id": cur.lastrowid, "slot_iso": slot_iso}
+
+
+def lookup_appt(
+    conn: sqlite3.Connection,
+    name: str | None = None,
+    phone: str | None = None,
+) -> list[dict]:
+    if not name and not phone:
+        return []
+    clauses = ["status = 'booked'"]
+    params: list = []
+    if name:
+        clauses.append("LOWER(patient_name) LIKE ?")
+        params.append(f"%{name.lower()}%")
+    if phone:
+        clauses.append("phone = ?")
+        params.append(phone)
+    sql = (
+        "SELECT id, patient_name, phone, slot_iso, reason "
+        "FROM appointments WHERE " + " AND ".join(clauses) + " ORDER BY slot_iso"
+    )
+    return [
+        {
+            "appointment_id": r[0],
+            "patient_name": r[1],
+            "phone": r[2],
+            "slot_iso": r[3],
+            "reason": r[4],
+        }
+        for r in conn.execute(sql, params)
+    ]
