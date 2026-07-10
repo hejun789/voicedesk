@@ -541,7 +541,7 @@ git commit -m "feat: cancel and reschedule tools"
 We are open Monday through Friday, 9am to 5pm. We are closed on weekends and public holidays.
 
 ## Location
-BrightSmile Dental is at 200 Market Street, Suite 4, Springfield. Parking is free behind the building.
+BrightSmile Dental is located at 200 Market Street, Suite 4, Springfield. Parking is free behind the building.
 
 ## Insurance
 We accept Delta Dental, Cigna, MetLife, and Aetna. We also offer self-pay plans. Please bring your insurance card.
@@ -560,7 +560,7 @@ def test_faq_hours(tmp_path):
     doc = tmp_path / "info.md"
     doc.write_text(
         "## Hours\nOpen Monday to Friday 9am to 5pm.\n\n"
-        "## Location\nWe are at 200 Market Street.\n"
+        "## Location\nWe are located at 200 Market Street.\n"
     )
     ans = answer_faq("what are your opening hours", str(doc))
     assert "Monday to Friday" in ans
@@ -570,7 +570,7 @@ def test_faq_location(tmp_path):
     doc = tmp_path / "info.md"
     doc.write_text(
         "## Hours\nOpen Monday to Friday 9am to 5pm.\n\n"
-        "## Location\nWe are at 200 Market Street.\n"
+        "## Location\nWe are located at 200 Market Street.\n"
     )
     ans = answer_faq("where are you located", str(doc))
     assert "Market Street" in ans
