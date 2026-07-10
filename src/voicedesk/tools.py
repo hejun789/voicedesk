@@ -24,3 +24,22 @@ def find_slots(conn: sqlite3.Connection, day_iso: str) -> list[str]:
         )
     }
     return [s for s in candidates if s not in booked]
+
+
+def book(
+    conn: sqlite3.Connection,
+    patient_name: str,
+    phone: str,
+    slot_iso: str,
+    reason: str,
+) -> dict:
+    day_iso = slot_iso.split("T")[0]
+    if slot_iso not in find_slots(conn, day_iso):
+        return {"ok": False, "error": "slot_unavailable"}
+    cur = conn.execute(
+        "INSERT INTO appointments (patient_name, phone, slot_iso, reason, status) "
+        "VALUES (?, ?, ?, ?, 'booked')",
+        (patient_name, phone, slot_iso, reason),
+    )
+    conn.commit()
+    return {"ok": True, "appointment_id": cur.lastrowid, "slot_iso": slot_iso}
