@@ -77,6 +77,22 @@ def test_build_system_prompt_forbids_placeholder_details():
     assert "placeholder" in prompt
 
 
+def test_build_system_prompt_requires_relaying_faq_answer():
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "relay the retrieved answer" in prompt
+
+
+def test_build_system_prompt_forbids_inventing_appointment_id():
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "NEVER invent or guess an appointment_id" in prompt
+
+
+def test_build_system_prompt_requires_escalation_for_medical_and_billing():
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "medical" in prompt.lower()
+    assert "billing dispute" in prompt.lower()
+
+
 def test_agent_default_system_prompt_has_current_year(db):
     agent = Agent(db, FakeLLM([]))
     assert str(date.today().year) in agent.messages[0]["content"]
