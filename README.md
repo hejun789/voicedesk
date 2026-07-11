@@ -37,6 +37,30 @@ Note: put your real key in `.env` (gitignored), NOT in `.env.example` (the commi
 # Bash:        PYTHONPATH=src python -m pytest -v
 ```
 
+## Evals (Phase 2)
+
+The eval harness runs ~30 scripted caller scenarios against the real Groq agent,
+3x each, and scores them on objective outcomes (was the right tool called? is the
+appointment actually in the DB? did it escalate when it should?).
+
+Run from the repo root (needs `GROQ_API_KEY` in `.env`):
+
+```powershell
+# PowerShell
+$env:PYTHONPATH = "src"
+python -m voicedesk.evals                          # full suite, 3 runs each
+python -m voicedesk.evals --scenario faq_hours --runs 1   # one scenario, fast
+```
+
+```bash
+# Bash
+PYTHONPATH=src python -m voicedesk.evals
+```
+
+It prints a console report and writes a markdown report to `reports/eval-<timestamp>.md`.
+Each scenario is reported as PASS (3/3), FLAKY (1-2/3), or FAIL (0/3) — flakiness is a
+first-class metric, because the underlying LLM is non-deterministic.
+
 ## Architecture
 Browser/CLI → agent core (LLM + tool calling) → tools over SQLite calendar.
 Tools, agent, and LLM provider are cleanly separated so STT/TTS and Twilio can be
