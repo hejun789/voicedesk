@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from voicedesk.llm import Message, ToolCall, LLMError
 
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
@@ -27,6 +28,17 @@ def _is_tool_use_failed(exc: Exception) -> bool:
     return "tool_use_failed" in str(exc)
 
 
+def _is_rate_limited(exc: Exception) -> bool:
+    """True when Groq rejected the request for exceeding the free-tier rate
+    limit. Worth waiting out — unlike auth or bad-request errors."""
+    if getattr(exc, "status_code", None) == 429:
+        return True
+    if getattr(exc, "code", None) == "rate_limit_exceeded":
+        return True
+    text = str(exc).lower()
+    return "rate limit" in text or "429" in text
+
+
 class GroqLLM:
     def __init__(
         self,
@@ -34,11 +46,13 @@ class GroqLLM:
         api_key: str | None = None,
         client=None,
         max_retries: int = 3,
+        backoff_base: float = 2.0,
     ):
         # Model is configurable via GROQ_MODEL so a different model can be tried
         # without code changes if tool-calling reliability is poor.
         self.model = model or os.environ.get("GROQ_MODEL", DEFAULT_MODEL)
         self.max_retries = max_retries
+        self.backoff_base = backoff_base
         if client is not None:
             self.client = client  # injected (used by tests — no network/key)
         else:
@@ -58,9 +72,14 @@ class GroqLLM:
                 return _to_message(resp.choices[0])
             except Exception as e:  # noqa: BLE001 - translated to LLMError below
                 last_exc = e
-                # Retry only the transient malformed-tool-call case; fail fast
-                # on everything else (auth, network, bad request, ...).
-                if _is_tool_use_failed(e) and attempt < self.max_retries - 1:
-                    continue
+                if attempt < self.max_retries - 1:
+                    # Rate limits are worth waiting out.
+                    if _is_rate_limited(e):
+                        time.sleep(self.backoff_base * (2 ** attempt))
+                        continue
+                    # Malformed tool calls are non-deterministic; resample at once.
+                    if _is_tool_use_failed(e):
+                        continue
+                # Everything else (auth, bad request, ...) fails fast.
                 raise LLMError(str(e)) from e
         raise LLMError(str(last_exc)) from last_exc
