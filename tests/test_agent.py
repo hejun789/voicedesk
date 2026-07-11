@@ -93,6 +93,16 @@ def test_build_system_prompt_requires_escalation_for_medical_and_billing():
     assert "billing dispute" in prompt.lower()
 
 
+def test_build_system_prompt_requires_escalation_on_gibberish():
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "gibberish" in prompt.lower()
+
+
+def test_build_system_prompt_lookup_appt_name_or_phone_alone():
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "name ALONE or a phone number ALONE" in prompt
+
+
 def test_agent_default_system_prompt_has_current_year(db):
     agent = Agent(db, FakeLLM([]))
     assert str(date.today().year) in agent.messages[0]["content"]

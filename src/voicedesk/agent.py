@@ -31,7 +31,14 @@ def build_system_prompt(today: date) -> str:
         "clinic information. Do this even if you could compose a plausible reply — "
         "escalating is always the safe choice for these. "
         "If you cannot help confidently, or input is unclear or out of scope, call the "
-        "escalate tool. Keep replies short and natural, as if speaking on a phone call."
+        "escalate tool. "
+        "If the caller's message is unintelligible, gibberish, empty of meaning, or you "
+        "cannot determine what they want, call the escalate tool. Do not guess and do not "
+        "reply with small talk. "
+        "lookup_appt works with a name ALONE or a phone number ALONE — you do not need "
+        "both. If the caller gives you either one, call lookup_appt with what you have "
+        "instead of asking for more. "
+        "Keep replies short and natural, as if speaking on a phone call."
     )
 
 

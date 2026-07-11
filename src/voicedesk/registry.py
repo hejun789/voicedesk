@@ -55,7 +55,14 @@ def dispatch(conn, name: str, args: dict) -> dict:
         return {"results": tools.lookup_appt(conn, args.get("name"), args.get("phone"))}
     if name == "answer_faq":
         kwargs = {"doc_path": args["doc_path"]} if "doc_path" in args else {}
-        return {"answer": answer_faq(args["query"], **kwargs)}
+        answer = answer_faq(args["query"], **kwargs)
+        if answer == "NO_MATCH":
+            return {
+                "answer": "NO_MATCH",
+                "note": "The clinic information does not cover this question. "
+                        "You do not have this information. Call the escalate tool now.",
+            }
+        return {"answer": answer}
     if name == "escalate":
         return {"ok": True, "escalated": True, "reason": args.get("reason", "")}
     return {"ok": False, "error": "unknown_tool"}
