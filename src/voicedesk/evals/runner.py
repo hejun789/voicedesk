@@ -27,6 +27,23 @@ def tools_called_from(messages: list[dict]) -> list[str]:
     return names
 
 
+def tool_calls_from(messages: list[dict]) -> list[dict]:
+    """Every tool call the agent made, with its arguments, in call order.
+    Returns [{"name": str, "arguments": dict}, ...]. Arguments that are not
+    valid JSON are preserved as a raw string under "arguments_raw" so a
+    malformed generation is still visible to a human reading the report."""
+    calls: list[dict] = []
+    for m in messages:
+        for tc in m.get("tool_calls") or []:
+            name = tc["function"]["name"]
+            raw = tc["function"]["arguments"]
+            try:
+                calls.append({"name": name, "arguments": json.loads(raw)})
+            except json.JSONDecodeError:
+                calls.append({"name": name, "arguments": {}, "arguments_raw": raw})
+    return calls
+
+
 def fresh_db() -> sqlite3.Connection:
     """A new in-memory DB per run, so runs cannot contaminate each other."""
     conn = sqlite3.connect(":memory:")
@@ -97,6 +114,7 @@ def run_scenario_once(scenario: dict, llm) -> RunRecord:
         final_reply=final_reply,
         latency_s=latency_s,
         error=capturing.error,
+        tool_calls=tool_calls_from(agent.messages),
     )
 
 

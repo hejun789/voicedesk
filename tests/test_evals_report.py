@@ -4,10 +4,12 @@ from voicedesk.evals.report import (
 )
 
 
-def _result(sid, category, passed, latency=1.0, failures=None, error=None):
+def _result(sid, category, passed, latency=1.0, failures=None, error=None,
+            tool_calls=None):
     rec = RunRecord(scenario_id=sid, category=category, tools_called=[],
                     escalated=False, appointments=[], final_reply="",
-                    latency_s=latency, error=error)
+                    latency_s=latency, error=error,
+                    tool_calls=tool_calls or [])
     return RunResult(record=rec, passed=passed,
                      failures=failures or ([] if passed else ["boom"]))
 
@@ -111,3 +113,41 @@ def test_format_markdown_shows_error_line_when_errors_present():
 def test_format_markdown_omits_error_line_when_no_errors():
     out = format_markdown([_result("a", "booking", True)])
     assert "LLM/API errors" not in out
+
+
+def test_format_console_shows_tool_call_arguments_on_failure():
+    results = [_result("book_oneshot", "booking", False,
+                        tool_calls=[{"name": "book",
+                                     "arguments": {"patient_name": "Jane Doe"}}])]
+    out = format_console(results)
+    assert "book(" in out
+    assert "Jane Doe" in out
+
+
+def test_format_console_shows_none_when_no_tool_calls_on_failure():
+    out = format_console([_result("a", "booking", False, tool_calls=[])])
+    assert "tool calls: (none)" in out
+
+
+def test_format_console_tool_calls_line_appears_once_per_run():
+    out = format_console([_result("a", "booking", False,
+                                   failures=["boom1", "boom2"],
+                                   tool_calls=[{"name": "book", "arguments": {}}])])
+    assert out.count("tool calls:") == 1
+
+
+def test_format_console_shows_raw_arguments_when_malformed():
+    results = [_result("a", "booking", False,
+                        tool_calls=[{"name": "book", "arguments": {},
+                                     "arguments_raw": "{not json"}])]
+    out = format_console(results)
+    assert "{not json" in out
+
+
+def test_format_markdown_shows_tool_call_arguments_on_failure():
+    results = [_result("book_oneshot", "booking", False,
+                        tool_calls=[{"name": "book",
+                                     "arguments": {"patient_name": "Jane Doe"}}])]
+    out = format_markdown(results)
+    assert "book(" in out
+    assert "Jane Doe" in out

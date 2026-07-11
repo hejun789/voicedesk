@@ -1,7 +1,8 @@
 import json
 import pytest
 from voicedesk.evals.runner import (
-    load_scenarios, tools_called_from, fresh_db, seed_db, all_appointments,
+    load_scenarios, tools_called_from, tool_calls_from, fresh_db, seed_db,
+    all_appointments,
 )
 
 
@@ -23,6 +24,41 @@ def test_tools_called_from_extracts_names_in_order():
 
 def test_tools_called_from_empty_when_no_tool_calls():
     assert tools_called_from([{"role": "assistant", "content": "hello"}]) == []
+
+
+def test_tool_calls_from_returns_names_and_parsed_arguments_in_order():
+    messages = [
+        {"role": "system", "content": "x"},
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"id": "1", "type": "function",
+             "function": {"name": "find_slots", "arguments": '{"date": "2026-07-13"}'}},
+            {"id": "2", "type": "function",
+             "function": {"name": "book", "arguments": '{"patient_name": "Jane Doe"}'}},
+        ]},
+        {"role": "tool", "tool_call_id": "1", "content": "{}"},
+        {"role": "assistant", "content": "done"},
+    ]
+    assert tool_calls_from(messages) == [
+        {"name": "find_slots", "arguments": {"date": "2026-07-13"}},
+        {"name": "book", "arguments": {"patient_name": "Jane Doe"}},
+    ]
+
+
+def test_tool_calls_from_empty_when_no_tool_calls():
+    assert tool_calls_from([{"role": "assistant", "content": "hello"}]) == []
+
+
+def test_tool_calls_from_preserves_malformed_arguments_as_raw_string():
+    messages = [
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"id": "1", "type": "function",
+             "function": {"name": "book", "arguments": "{not json"}},
+        ]},
+    ]
+    assert tool_calls_from(messages) == [
+        {"name": "book", "arguments": {}, "arguments_raw": "{not json"},
+    ]
 
 
 def test_fresh_db_is_isolated():

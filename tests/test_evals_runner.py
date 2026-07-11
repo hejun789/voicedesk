@@ -36,6 +36,13 @@ def test_run_scenario_once_records_what_happened():
     assert rec.error is None
 
 
+def test_run_scenario_once_records_tool_call_arguments():
+    rec = run_scenario_once(BOOK_SCENARIO, _booking_llm())
+    assert rec.tool_calls == [{"name": "book", "arguments": {
+        "patient_name": "Jane Doe", "phone": "5551234",
+        "slot_iso": "2026-07-13T09:00", "reason": "cleaning"}}]
+
+
 def test_run_scenario_once_applies_seed():
     scenario = {
         "id": "cancel", "category": "cancel",

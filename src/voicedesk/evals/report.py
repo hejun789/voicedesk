@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from statistics import mean, median
 
@@ -44,12 +45,24 @@ def summarize(results: list[RunResult]) -> dict:
     }
 
 
+def _format_tool_call(call: dict) -> str:
+    args = call.get("arguments_raw", None)
+    if args is None:
+        args = json.dumps(call["arguments"])
+    return f"{call['name']}({args})"
+
+
 def _failure_lines(results: list[RunResult]) -> list[str]:
     lines = []
     for r in results:
         if not r.passed:
             for f in r.failures:
                 lines.append(f"[{r.record.scenario_id}] {f}")
+            if r.record.tool_calls:
+                calls = ", ".join(_format_tool_call(c) for c in r.record.tool_calls)
+                lines.append(f"    tool calls: {calls}")
+            else:
+                lines.append("    tool calls: (none)")
     return lines
 
 

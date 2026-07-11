@@ -12,6 +12,7 @@ class RunRecord:
     final_reply: str
     latency_s: float
     error: str | None = None
+    tool_calls: list[dict] = field(default_factory=list)
 
 
 @dataclass
