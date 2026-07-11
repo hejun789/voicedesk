@@ -2,7 +2,7 @@
   {
     "id": "book_oneshot",
     "category": "booking",
-    "turns": ["Book me Monday July 13th at 9am. Jane Doe, 5551234, for a cleaning."],
+    "turns": ["Book me Monday July 13th 2026 at 9am. Jane Doe, 5551234, for a cleaning.", "Yes, that's right."],
     "expect": {
       "tools_called": ["book"],
       "escalated": false,
@@ -14,7 +14,7 @@
     "category": "booking",
     "turns": [
       "Hi, I'd like to make an appointment.",
-      "Monday July 13th at 10am works.",
+      "Monday July 13th 2026 at 10am works.",
       "John Smith, 5559876.",
       "It's for a filling."
     ],
@@ -28,7 +28,7 @@
     "id": "book_after_checking_availability",
     "category": "booking",
     "turns": [
-      "What times do you have available on Tuesday July 14th?",
+      "What times do you have available on Tuesday July 14th 2026?",
       "Book the 2pm one. Mary Lee, 5552222, for a checkup."
     ],
     "expect": {
@@ -40,7 +40,7 @@
   {
     "id": "book_afternoon_slot",
     "category": "booking",
-    "turns": ["I need an appointment Wednesday July 15th at 3pm. Tom Ray, 5553333, for a crown."],
+    "turns": ["I need an appointment Wednesday July 15th 2026 at 3pm. Tom Ray, 5553333, for a crown.", "Yes, that's right."],
     "expect": {
       "tools_called": ["book"],
       "escalated": false,
@@ -50,7 +50,7 @@
   {
     "id": "book_earliest_available",
     "category": "booking",
-    "turns": ["Book me the earliest slot you have on Thursday July 16th. Anna Kim, 5554444, cleaning."],
+    "turns": ["Book me the earliest slot you have on Thursday July 16th 2026. Anna Kim, 5554444, cleaning.", "Yes, that's right."],
     "expect": {
       "tools_called": ["book"],
       "escalated": false,
@@ -60,7 +60,7 @@
   {
     "id": "book_last_slot_of_day",
     "category": "booking",
-    "turns": ["Friday July 17th at 4pm please. Sam Poe, 5555555, teeth whitening."],
+    "turns": ["Friday July 17th 2026 at 4pm please. Sam Poe, 5555555, teeth whitening.", "Yes, that's right."],
     "expect": {
       "tools_called": ["book"],
       "escalated": false,
@@ -129,7 +129,7 @@
     "id": "reschedule_other_day",
     "category": "reschedule",
     "seed": [{"patient_name": "John Smith", "phone": "5559876", "slot_iso": "2026-07-13T10:00", "reason": "filling"}],
-    "turns": ["Move my appointment to Tuesday July 14th at 9am. John Smith, 5559876."],
+    "turns": ["Move my appointment to Tuesday July 14th 2026 at 9am. John Smith, 5559876."],
     "expect": {
       "tools_called": ["lookup_appt", "reschedule"],
       "escalated": false,
@@ -208,16 +208,17 @@
     "id": "book_taken_slot",
     "category": "unavailable",
     "seed": [{"patient_name": "Jane Doe", "phone": "5551234", "slot_iso": "2026-07-13T09:00", "reason": "cleaning"}],
-    "turns": ["Book me Monday July 13th at 9am. Carl New, 5556666, for a cleaning."],
+    "turns": ["Book me Monday July 13th 2026 at 9am. Carl New, 5556666, for a cleaning."],
     "expect": {
       "escalated": false,
-      "appointments": [{"patient_name": "Jane Doe", "slot_iso": "2026-07-13T09:00", "status": "booked"}]
+      "appointments": [{"patient_name": "Jane Doe", "slot_iso": "2026-07-13T09:00", "status": "booked"}],
+      "appointment_count": 1
     }
   },
   {
     "id": "book_saturday_rejected",
     "category": "unavailable",
-    "turns": ["Book me Saturday July 18th at 10am. Rita Sun, 5557777, for a cleaning."],
+    "turns": ["Book me Saturday July 18th 2026 at 10am. Rita Sun, 5557777, for a cleaning."],
     "expect": {
       "appointment_count": 0
     }
@@ -225,7 +226,7 @@
   {
     "id": "book_outside_hours_rejected",
     "category": "unavailable",
-    "turns": ["Book me Monday July 13th at 8pm. Neil Late, 5558888, for a cleaning."],
+    "turns": ["Book me Monday July 13th 2026 at 8pm. Neil Late, 5558888, for a cleaning."],
     "expect": {
       "appointment_count": 0
     }
@@ -233,7 +234,7 @@
   {
     "id": "book_sunday_rejected",
     "category": "unavailable",
-    "turns": ["Can I come in on Sunday July 19th at noon? Paul Rest, 5551111, checkup."],
+    "turns": ["Can I come in on Sunday July 19th 2026 at noon? Paul Rest, 5551111, checkup."],
     "expect": {
       "appointment_count": 0
     }
@@ -309,7 +310,7 @@
     "id": "changed_mind_mid_call",
     "category": "ambiguous",
     "turns": [
-      "Book me Monday July 13th at 9am. Jane Doe, 5551234, for a cleaning.",
+      "Book me Monday July 13th 2026 at 9am. Jane Doe, 5551234, for a cleaning.",
       "Actually, can you make it 11am instead?"
     ],
     "expect": {

@@ -45,3 +45,12 @@ def test_escalation_category_is_well_represented(scenarios):
     escalation = [s for s in scenarios if s["category"] == "escalation"]
     assert len(escalation) >= 5
     assert all(s["expect"].get("escalated") is True for s in escalation)
+
+
+VALID_APPOINTMENT_KEYS = {"patient_name", "phone", "slot_iso", "reason", "status"}
+
+
+def test_expect_appointments_use_only_known_keys(scenarios):
+    for s in scenarios:
+        for appt in s["expect"].get("appointments", []):
+            assert set(appt).issubset(VALID_APPOINTMENT_KEYS), s["id"]

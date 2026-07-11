@@ -6,7 +6,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from voicedesk.evals.report import format_console, format_markdown
-from voicedesk.evals.runner import load_scenarios, run_all
+from voicedesk.evals.runner import load_scenarios, run_scenario
 from voicedesk.groq_client import GroqLLM
 
 
@@ -17,6 +17,12 @@ def select_scenarios(scenarios: list[dict], scenario_id: str | None) -> list[dic
     if not picked:
         raise SystemExit(f"no scenario with id {scenario_id!r}")
     return picked
+
+
+def require_api_key() -> None:
+    if not os.environ.get("GROQ_API_KEY"):
+        raise SystemExit(
+            "GROQ_API_KEY not set — put it in .env (see .env.example)")
 
 
 def main() -> None:
@@ -31,11 +37,19 @@ def main() -> None:
     p.add_argument("--out", default=None, help="markdown report path")
     args = p.parse_args()
 
+    require_api_key()
+
     scenarios = select_scenarios(load_scenarios(args.scenarios), args.scenario)
     print(f"Running {len(scenarios)} scenario(s) x {args.runs} run(s)...\n",
           file=sys.stderr)
 
-    results = run_all(scenarios, lambda: GroqLLM(), runs=args.runs)
+    results = []
+    for i, scenario in enumerate(scenarios, start=1):
+        scenario_results = run_scenario(scenario, lambda: GroqLLM(), runs=args.runs)
+        passed = sum(1 for r in scenario_results if r.passed)
+        print(f"[{i}/{len(scenarios)}] {scenario['id']} ... "
+              f"{passed}/{len(scenario_results)}", file=sys.stderr)
+        results.extend(scenario_results)
 
     print(format_console(results))
 

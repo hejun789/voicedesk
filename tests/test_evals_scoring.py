@@ -69,3 +69,12 @@ def test_llm_error_fails_immediately():
 
 def test_empty_expect_passes():
     assert score_run(_record(), {}).passed is True
+
+
+def test_empty_string_error_still_fails_the_run():
+    # An LLMError whose str() is empty ("") is falsy but still means the
+    # API call failed; `if record.error:` would wrongly score assertions
+    # against a successful-looking record.
+    res = score_run(_record(error=""), {"tools_called": ["book"]})
+    assert res.passed is False
+    assert res.failures == ["llm_error: "]

@@ -27,7 +27,7 @@ def _matches(expected: dict, actual: dict) -> bool:
 
 
 def score_run(record: RunRecord, expect: dict) -> RunResult:
-    if record.error:
+    if record.error is not None:
         return RunResult(record=record, passed=False,
                          failures=[f"llm_error: {record.error}"])
 

@@ -30,7 +30,8 @@ def summarize(results: list[RunResult]) -> dict:
         c["total"] += 1
         c["passed"] += int(r.passed)
 
-    latencies = [r.record.latency_s for r in results]
+    error_runs = sum(1 for r in results if r.record.error is not None)
+    latencies = [r.record.latency_s for r in results if r.record.error is None]
     return {
         "total_runs": total,
         "passed_runs": passed,
@@ -39,6 +40,7 @@ def summarize(results: list[RunResult]) -> dict:
         "per_category": per_category,
         "latency_mean": mean(latencies) if latencies else 0.0,
         "latency_p50": median(latencies) if latencies else 0.0,
+        "error_runs": error_runs,
     }
 
 
@@ -59,6 +61,13 @@ def format_console(results: list[RunResult]) -> str:
         f"Overall: {s['passed_runs']}/{s['total_runs']} runs "
         f"({s['pass_rate'] * 100:.1f}%)",
         f"Latency: mean {s['latency_mean']:.2f}s, p50 {s['latency_p50']:.2f}s",
+    ]
+    if s["error_runs"] > 0:
+        out.append(
+            f"Errors: {s['error_runs']} run(s) failed due to LLM/API errors "
+            "(not agent defects)"
+        )
+    out += [
         "",
         f"{'SCENARIO':<28}{'RUNS':<8}{'STATUS'}",
     ]
@@ -88,6 +97,14 @@ def format_markdown(results: list[RunResult]) -> str:
         f"({s['pass_rate'] * 100:.1f}%)**",
         "",
         f"Latency: mean {s['latency_mean']:.2f}s · p50 {s['latency_p50']:.2f}s",
+    ]
+    if s["error_runs"] > 0:
+        out += [
+            "",
+            f"Errors: {s['error_runs']} run(s) failed due to LLM/API errors "
+            "(not agent defects)",
+        ]
+    out += [
         "",
         "## Scenarios",
         "",
