@@ -150,3 +150,59 @@ def test_complete_caps_retry_after_at_max_backoff(monkeypatch):
     msg = llm.complete([], [])
     assert msg.content == "ok"
     assert sleeps == [gc.MAX_BACKOFF_S]
+
+
+def test_on_retry_called_on_rate_limit_with_wait_seconds(monkeypatch):
+    import voicedesk.groq_client as gc
+
+    monkeypatch.setattr(gc.time, "sleep", lambda s: None)
+
+    e = Exception("rate limit exceeded, please try again in 5s")
+    e.status_code = 429
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([e, good])
+
+    calls = []
+    llm = GroqLLM(client=client, backoff_base=2.0,
+                  on_retry=lambda reason, wait_s, attempt: calls.append((reason, wait_s, attempt)))
+    msg = llm.complete([], [])
+    assert msg.content == "ok"
+    assert calls == [("rate_limited", 5.0, 1)]
+
+
+def test_on_retry_called_on_tool_use_failed():
+    good = SimpleNamespace(choices=[_fake_choice(content="booked")])
+    client = _FakeGroqClient([_tool_use_failed_error(), good])
+
+    calls = []
+    llm = GroqLLM(client=client, max_retries=3,
+                  on_retry=lambda reason, wait_s, attempt: calls.append((reason, wait_s, attempt)))
+    msg = llm.complete([], [])
+    assert msg.content == "booked"
+    assert calls == [("tool_use_failed", 0.0, 1)]
+
+
+def test_on_retry_exception_does_not_break_complete(monkeypatch):
+    import voicedesk.groq_client as gc
+
+    monkeypatch.setattr(gc.time, "sleep", lambda s: None)
+
+    e = Exception("rate limit exceeded, please try again in 5s")
+    e.status_code = 429
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([e, good])
+
+    def _broken(reason, wait_s, attempt):
+        raise RuntimeError("boom")
+
+    llm = GroqLLM(client=client, backoff_base=2.0, on_retry=_broken)
+    msg = llm.complete([], [])
+    assert msg.content == "ok"
+
+
+def test_complete_works_without_on_retry_callback():
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([good])
+    llm = GroqLLM(client=client)
+    msg = llm.complete([], [])
+    assert msg.content == "ok"

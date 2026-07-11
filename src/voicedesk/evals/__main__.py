@@ -26,6 +26,15 @@ def require_api_key() -> None:
             "GROQ_API_KEY not set — put it in .env (see .env.example)")
 
 
+def _log_retry(reason: str, wait_s: float, attempt: int) -> None:
+    if reason == "rate_limited":
+        print(f"    rate limited — waiting {wait_s:.1f}s (retry {attempt})",
+              file=sys.stderr, flush=True)
+    else:
+        print(f"    malformed tool call — resampling (retry {attempt})",
+              file=sys.stderr, flush=True)
+
+
 def main() -> None:
     load_dotenv()
     p = argparse.ArgumentParser(
@@ -44,16 +53,17 @@ def main() -> None:
 
     scenarios = select_scenarios(load_scenarios(args.scenarios), args.scenario)
     print(f"Running {len(scenarios)} scenario(s) x {args.runs} run(s)...\n",
-          file=sys.stderr)
+          file=sys.stderr, flush=True)
 
     results = []
     for i, scenario in enumerate(scenarios, start=1):
         if i > 1 and args.delay:
             time.sleep(args.delay)
-        scenario_results = run_scenario(scenario, lambda: GroqLLM(), runs=args.runs)
+        scenario_results = run_scenario(
+            scenario, lambda: GroqLLM(on_retry=_log_retry), runs=args.runs)
         passed = sum(1 for r in scenario_results if r.passed)
         print(f"[{i}/{len(scenarios)}] {scenario['id']} ... "
-              f"{passed}/{len(scenario_results)}", file=sys.stderr)
+              f"{passed}/{len(scenario_results)}", file=sys.stderr, flush=True)
         results.extend(scenario_results)
 
     print(format_console(results))

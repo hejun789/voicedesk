@@ -73,6 +73,7 @@ class GroqLLM:
         max_retries: int = 3,
         rate_limit_retries: int = 6,
         backoff_base: float = 2.0,
+        on_retry: "callable | None" = None,
     ):
         # Model is configurable via GROQ_MODEL so a different model can be tried
         # without code changes if tool-calling reliability is poor.
@@ -80,6 +81,7 @@ class GroqLLM:
         self.max_retries = max_retries
         self.rate_limit_retries = rate_limit_retries
         self.backoff_base = backoff_base
+        self.on_retry = on_retry
         if client is not None:
             self.client = client  # injected (used by tests — no network/key)
         else:
@@ -105,11 +107,22 @@ class GroqLLM:
                     wait = _retry_after_seconds(e)
                     if wait is None:
                         wait = self.backoff_base * (2 ** (rate_attempts - 1))
-                    time.sleep(min(wait, MAX_BACKOFF_S))
+                    wait = min(wait, MAX_BACKOFF_S)
+                    self._notify("rate_limited", wait, rate_attempts)
+                    time.sleep(wait)
                     continue
                 # Malformed tool calls are non-deterministic; resample at once.
                 if _is_tool_use_failed(e) and tool_attempts < self.max_retries - 1:
                     tool_attempts += 1
+                    self._notify("tool_use_failed", 0.0, tool_attempts)
                     continue
                 # Everything else (auth, bad request, ...) fails fast.
                 raise LLMError(str(e)) from e
+
+    def _notify(self, reason: str, wait_s: float, attempt: int) -> None:
+        if self.on_retry is None:
+            return
+        try:
+            self.on_retry(reason, wait_s, attempt)
+        except Exception:  # a broken callback must never break the run
+            pass
