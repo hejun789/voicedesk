@@ -43,7 +43,8 @@ Supported assertions in `expect` (deliberately small):
 | `tools_called` | these tool names must all have been called (subset check, order-insensitive) |
 | `tools_not_called` | none of these tool names may have been called |
 | `escalated` | boolean — whether the `escalate` tool was called |
-| `appointments` | expected final DB state: list of `{patient_name, slot_iso, status}` |
+| `appointments` | expected final DB state: each listed `{patient_name, slot_iso, status}` must match some row |
+| `appointment_count` | exact number of appointment rows expected (needed by negative scenarios, e.g. "must not book on a weekend" — without it those assertions would pass vacuously) |
 | `reply_contains` | optional case-insensitive substring check on the final reply |
 
 A run PASSES only if every assertion present in `expect` holds.
