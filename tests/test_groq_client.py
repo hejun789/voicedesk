@@ -94,7 +94,59 @@ def test_complete_retries_on_rate_limit_then_succeeds():
 
 def test_complete_raises_llmerror_after_persistent_rate_limit():
     client = _FakeGroqClient([_rate_limit_error() for _ in range(3)])
-    llm = GroqLLM(client=client, max_retries=3, backoff_base=0)
+    llm = GroqLLM(client=client, max_retries=3, rate_limit_retries=2, backoff_base=0)
     with pytest.raises(LLMError):
         llm.complete([], [])
     assert client.calls == 3
+
+
+def test_retry_after_seconds_parses_header():
+    from voicedesk.groq_client import _retry_after_seconds
+    from types import SimpleNamespace as SN
+    e = Exception("429 Too Many Requests")
+    e.response = SN(headers={"retry-after": "3"})
+    assert _retry_after_seconds(e) == 3.0
+
+
+def test_retry_after_seconds_parses_message_body():
+    from voicedesk.groq_client import _retry_after_seconds
+    e = Exception("rate limit exceeded, please try again in 7.66s")
+    assert _retry_after_seconds(e) == 7.66
+
+
+def test_retry_after_seconds_returns_none_when_absent():
+    from voicedesk.groq_client import _retry_after_seconds
+    e = Exception("429 Too Many Requests: rate limit exceeded")
+    assert _retry_after_seconds(e) is None
+
+
+def test_complete_sleeps_for_retry_after_duration(monkeypatch):
+    import voicedesk.groq_client as gc
+
+    sleeps = []
+    monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
+
+    e = Exception("rate limit exceeded, please try again in 5s")
+    e.status_code = 429
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([e, good])
+    llm = GroqLLM(client=client, backoff_base=2.0)
+    msg = llm.complete([], [])
+    assert msg.content == "ok"
+    assert sleeps == [5.0]
+
+
+def test_complete_caps_retry_after_at_max_backoff(monkeypatch):
+    import voicedesk.groq_client as gc
+
+    sleeps = []
+    monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
+
+    e = Exception("rate limit exceeded, please try again in 9999s")
+    e.status_code = 429
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([e, good])
+    llm = GroqLLM(client=client, backoff_base=2.0)
+    msg = llm.complete([], [])
+    assert msg.content == "ok"
+    assert sleeps == [gc.MAX_BACKOFF_S]

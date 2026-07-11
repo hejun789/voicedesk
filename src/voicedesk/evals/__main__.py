@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+import time
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -35,6 +36,8 @@ def main() -> None:
     p.add_argument("--scenario", default=None, help="run only this scenario id")
     p.add_argument("--runs", type=int, default=3, help="runs per scenario")
     p.add_argument("--out", default=None, help="markdown report path")
+    p.add_argument("--delay", type=float, default=0.0,
+                    help="seconds to wait between runs, to stay under API rate limits")
     args = p.parse_args()
 
     require_api_key()
@@ -45,6 +48,8 @@ def main() -> None:
 
     results = []
     for i, scenario in enumerate(scenarios, start=1):
+        if i > 1 and args.delay:
+            time.sleep(args.delay)
         scenario_results = run_scenario(scenario, lambda: GroqLLM(), runs=args.runs)
         passed = sum(1 for r in scenario_results if r.passed)
         print(f"[{i}/{len(scenarios)}] {scenario['id']} ... "

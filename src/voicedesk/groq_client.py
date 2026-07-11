@@ -1,9 +1,11 @@
 import json
 import os
+import re
 import time
 from voicedesk.llm import Message, ToolCall, LLMError
 
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
+MAX_BACKOFF_S = 60.0
 
 
 def _to_message(choice) -> Message:
@@ -39,6 +41,29 @@ def _is_rate_limited(exc: Exception) -> bool:
     return "rate limit" in text or "429" in text
 
 
+def _retry_after_seconds(exc: Exception) -> float | None:
+    """How long Groq told us to wait, from the Retry-After header or the error
+    body ("Please try again in 7.66s"). None when it didn't say."""
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    if headers is not None:
+        try:
+            value = headers.get("retry-after")
+        except Exception:  # noqa: BLE001 - headers may not be dict-like
+            value = None
+        if value is not None:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                pass
+    match = re.search(r"try again in ([\d.]+)s", str(exc))
+    if match:
+        try:
+            return float(match.group(1))
+        except ValueError:
+            return None
+    return None
+
+
 class GroqLLM:
     def __init__(
         self,
@@ -46,12 +71,14 @@ class GroqLLM:
         api_key: str | None = None,
         client=None,
         max_retries: int = 3,
+        rate_limit_retries: int = 6,
         backoff_base: float = 2.0,
     ):
         # Model is configurable via GROQ_MODEL so a different model can be tried
         # without code changes if tool-calling reliability is poor.
         self.model = model or os.environ.get("GROQ_MODEL", DEFAULT_MODEL)
         self.max_retries = max_retries
+        self.rate_limit_retries = rate_limit_retries
         self.backoff_base = backoff_base
         if client is not None:
             self.client = client  # injected (used by tests — no network/key)
@@ -60,8 +87,9 @@ class GroqLLM:
             self.client = Groq(api_key=api_key or os.environ["GROQ_API_KEY"])
 
     def complete(self, messages: list[dict], tools: list[dict]) -> Message:
-        last_exc: Exception | None = None
-        for attempt in range(self.max_retries):
+        tool_attempts = 0
+        rate_attempts = 0
+        while True:
             try:
                 resp = self.client.chat.completions.create(
                     model=self.model,
@@ -71,15 +99,17 @@ class GroqLLM:
                 )
                 return _to_message(resp.choices[0])
             except Exception as e:  # noqa: BLE001 - translated to LLMError below
-                last_exc = e
-                if attempt < self.max_retries - 1:
-                    # Rate limits are worth waiting out.
-                    if _is_rate_limited(e):
-                        time.sleep(self.backoff_base * (2 ** attempt))
-                        continue
-                    # Malformed tool calls are non-deterministic; resample at once.
-                    if _is_tool_use_failed(e):
-                        continue
+                # Rate limits: wait exactly as long as Groq asked, then retry.
+                if _is_rate_limited(e) and rate_attempts < self.rate_limit_retries:
+                    rate_attempts += 1
+                    wait = _retry_after_seconds(e)
+                    if wait is None:
+                        wait = self.backoff_base * (2 ** (rate_attempts - 1))
+                    time.sleep(min(wait, MAX_BACKOFF_S))
+                    continue
+                # Malformed tool calls are non-deterministic; resample at once.
+                if _is_tool_use_failed(e) and tool_attempts < self.max_retries - 1:
+                    tool_attempts += 1
+                    continue
                 # Everything else (auth, bad request, ...) fails fast.
                 raise LLMError(str(e)) from e
-        raise LLMError(str(last_exc)) from last_exc
