@@ -3,6 +3,16 @@ from datetime import date
 
 OPEN_HOURS = range(9, 17)  # 09:00 .. 16:00 inclusive
 
+_PLACEHOLDER_VALUES = {
+    "", "unknown", "n/a", "na", "none", "null", "nil", "string", "tbd",
+    "patient_name", "phone", "reason", "name", "patient", "caller",
+}
+
+
+def _is_placeholder(value: str) -> bool:
+    """True when the model supplied a filler value instead of a real one."""
+    return str(value).strip().lower() in _PLACEHOLDER_VALUES
+
 
 def _all_slots(day_iso: str) -> list[str]:
     d = date.fromisoformat(day_iso)
@@ -33,6 +43,10 @@ def book(
     slot_iso: str,
     reason: str,
 ) -> dict:
+    if _is_placeholder(patient_name) or _is_placeholder(phone):
+        return {"ok": False, "error": "missing_patient_details"}
+    if sum(c.isdigit() for c in str(phone)) < 3:
+        return {"ok": False, "error": "missing_patient_details"}
     day_iso = slot_iso.split("T")[0]
     if slot_iso not in find_slots(conn, day_iso):
         return {"ok": False, "error": "slot_unavailable"}

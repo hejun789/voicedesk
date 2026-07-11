@@ -1,12 +1,15 @@
 import json
 import sqlite3
 import time
+from datetime import date
 
 from voicedesk import tools
-from voicedesk.agent import Agent
+from voicedesk.agent import Agent, build_system_prompt
 from voicedesk.db import init_db
 from voicedesk.llm import LLMError
 from voicedesk.evals.scoring import RunRecord, RunResult, score_run
+
+EVAL_TODAY = date(2026, 7, 10)  # Friday before the scenario week (Mon 2026-07-13)
 
 
 def load_scenarios(path: str = "evals/scenarios.json") -> list[dict]:
@@ -76,7 +79,7 @@ def run_scenario_once(scenario: dict, llm) -> RunRecord:
     conn = fresh_db()
     seed_db(conn, scenario.get("seed", []))
     capturing = _ErrorCapturingLLM(llm)
-    agent = Agent(conn, capturing)
+    agent = Agent(conn, capturing, system_prompt=build_system_prompt(EVAL_TODAY))
 
     final_reply = ""
     start = time.perf_counter()

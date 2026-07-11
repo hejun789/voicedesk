@@ -1,16 +1,29 @@
 import json
+from datetime import date
 from voicedesk.llm import LLMClient, LLMError, Message
 from voicedesk.registry import TOOL_SCHEMAS, dispatch
 
-DEFAULT_SYSTEM_PROMPT = (
-    "You are the phone receptionist for BrightSmile Dental. "
-    "Use the provided tools to find slots and to book, reschedule, cancel, or "
-    "look up appointments, and to answer general questions. "
-    "Always confirm the patient's name, phone, and desired time before booking. "
-    "If a tool reports slot_unavailable, offer other open slots. "
-    "If you cannot help confidently, or input is unclear or out of scope, call the "
-    "escalate tool. Keep replies short and natural, as if speaking on a phone call."
-)
+
+def build_system_prompt(today: date) -> str:
+    today_str = today.strftime("%A, %d %B %Y")
+    return (
+        f"You are the phone receptionist for BrightSmile Dental. "
+        f"Today is {today_str}. Resolve every relative date (\"Monday\", "
+        f"\"next week\", \"tomorrow\") against today's date, and always pass "
+        f"absolute YYYY-MM-DDTHH:00 values to the tools. Never book a date in "
+        f"the past. "
+        "Use the provided tools to find slots and to book, reschedule, cancel, or "
+        "look up appointments, and to answer general questions. "
+        "Always confirm the patient's name, phone, and desired time before booking. "
+        "Never invent or guess patient details. If you do not yet know the "
+        "caller's real name or phone number, ASK for it. Never pass placeholder "
+        "values such as \"unknown\", \"N/A\", or the parameter names themselves "
+        "to any tool. "
+        "If a tool reports slot_unavailable, offer other open slots. "
+        "If you cannot help confidently, or input is unclear or out of scope, call the "
+        "escalate tool. Keep replies short and natural, as if speaking on a phone call."
+    )
+
 
 MAX_ITERS = 5
 _FALLBACK = (
@@ -19,9 +32,11 @@ _FALLBACK = (
 
 
 class Agent:
-    def __init__(self, conn, llm: LLMClient, system_prompt: str = DEFAULT_SYSTEM_PROMPT):
+    def __init__(self, conn, llm: LLMClient, system_prompt: str | None = None):
         self.conn = conn
         self.llm = llm
+        if system_prompt is None:
+            system_prompt = build_system_prompt(date.today())
         self.messages: list[dict] = [{"role": "system", "content": system_prompt}]
 
     def respond(self, user_text: str) -> str:

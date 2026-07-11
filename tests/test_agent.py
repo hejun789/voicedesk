@@ -1,5 +1,7 @@
+from datetime import date
+
 from voicedesk.llm import FakeLLM, LLMError, Message, ToolCall
-from voicedesk.agent import Agent, _FALLBACK
+from voicedesk.agent import Agent, _FALLBACK, build_system_prompt
 
 
 class _RaisingLLM:
@@ -62,3 +64,25 @@ def test_agent_survives_tool_exception(db):
     reply = agent.respond("book me monday 9am, Jane, 5551234")
     assert isinstance(reply, str)
     assert reply == "Sorry, let me get a human."
+
+
+def test_build_system_prompt_grounds_today():
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "Friday, 10 July 2026" in prompt
+
+
+def test_build_system_prompt_forbids_placeholder_details():
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "Never" in prompt
+    assert "placeholder" in prompt
+
+
+def test_agent_default_system_prompt_has_current_year(db):
+    agent = Agent(db, FakeLLM([]))
+    assert str(date.today().year) in agent.messages[0]["content"]
+
+
+def test_agent_explicit_system_prompt_used_verbatim(db):
+    custom = "custom prompt text"
+    agent = Agent(db, FakeLLM([]), system_prompt=custom)
+    assert agent.messages[0]["content"] == custom

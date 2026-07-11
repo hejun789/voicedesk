@@ -87,3 +87,24 @@ def test_run_scenario_detects_escalation():
 def test_run_all_flattens_results():
     results = run_all([BOOK_SCENARIO, BOOK_SCENARIO], _booking_llm, runs=2)
     assert len(results) == 4
+
+
+def test_run_scenario_once_pins_agent_to_eval_today():
+    class _CapturingLLM:
+        def __init__(self):
+            self.first_messages = None
+
+        def complete(self, messages, tools):
+            if self.first_messages is None:
+                self.first_messages = messages
+            return Message(content="ok", tool_calls=[])
+
+    llm = _CapturingLLM()
+    scenario = {
+        "id": "date_pin", "category": "misc",
+        "turns": ["hello"],
+        "expect": {},
+    }
+    run_scenario_once(scenario, llm)
+    assert llm.first_messages[0]["role"] == "system"
+    assert "10 July 2026" in llm.first_messages[0]["content"]
