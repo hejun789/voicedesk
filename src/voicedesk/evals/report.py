@@ -66,11 +66,15 @@ def _failure_lines(results: list[RunResult]) -> list[str]:
     return lines
 
 
-def format_console(results: list[RunResult]) -> str:
+def format_console(results: list[RunResult], model: str | None = None) -> str:
     s = summarize(results)
     out = [
         "VoiceDesk Eval Report",
         "=====================",
+    ]
+    if model is not None:
+        out.append(f"Model: {model}")
+    out += [
         f"Overall: {s['passed_runs']}/{s['total_runs']} runs "
         f"({s['pass_rate'] * 100:.1f}%)",
         f"Latency: mean {s['latency_mean']:.2f}s, p50 {s['latency_p50']:.2f}s",
@@ -99,13 +103,18 @@ def format_console(results: list[RunResult]) -> str:
     return "\n".join(out)
 
 
-def format_markdown(results: list[RunResult]) -> str:
+def format_markdown(results: list[RunResult], model: str | None = None) -> str:
     s = summarize(results)
     out = [
         "# VoiceDesk Eval Report",
         "",
         f"_Generated {datetime.now():%Y-%m-%d %H:%M:%S}_",
         "",
+    ]
+    if model is not None:
+        out.append(f"**Model:** `{model}`")
+        out.append("")
+    out += [
         f"**Overall: {s['passed_runs']}/{s['total_runs']} runs "
         f"({s['pass_rate'] * 100:.1f}%)**",
         "",

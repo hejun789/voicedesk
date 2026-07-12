@@ -151,3 +151,18 @@ def test_format_markdown_shows_tool_call_arguments_on_failure():
     out = format_markdown(results)
     assert "book(" in out
     assert "Jane Doe" in out
+
+
+def test_format_console_includes_model_when_given():
+    out = format_console([_result("a", "booking", True)], model="llama-3.1-8b-instant")
+    assert "llama-3.1-8b-instant" in out
+
+
+def test_format_markdown_includes_model_when_given():
+    out = format_markdown([_result("a", "booking", True)], model="llama-3.1-8b-instant")
+    assert "llama-3.1-8b-instant" in out
+
+
+def test_format_console_omits_model_line_when_not_given():
+    out = format_console([_result("a", "booking", True)])
+    assert "Model:" not in out
