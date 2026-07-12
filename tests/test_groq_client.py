@@ -1,7 +1,7 @@
 import pytest
 from types import SimpleNamespace
 from voicedesk.groq_client import _to_message, GroqLLM
-from voicedesk.llm import LLMError
+from voicedesk.llm import LLMError, QuotaExhausted
 
 
 def _fake_choice(content=None, tool_calls=None):
@@ -136,7 +136,10 @@ def test_complete_sleeps_for_retry_after_duration(monkeypatch):
     assert sleeps == [5.0]
 
 
-def test_complete_caps_retry_after_at_max_backoff(monkeypatch):
+def test_complete_raises_quota_exhausted_instead_of_capping_huge_wait(monkeypatch):
+    """A wait this long (9999s) means the daily quota is gone, not a
+    per-minute rate limit — capping it to MAX_BACKOFF_S and retrying would
+    just grind forever, so we must fail fast instead."""
     import voicedesk.groq_client as gc
 
     sleeps = []
@@ -147,9 +150,10 @@ def test_complete_caps_retry_after_at_max_backoff(monkeypatch):
     good = SimpleNamespace(choices=[_fake_choice(content="ok")])
     client = _FakeGroqClient([e, good])
     llm = GroqLLM(client=client, backoff_base=2.0)
-    msg = llm.complete([], [])
-    assert msg.content == "ok"
-    assert sleeps == [gc.MAX_BACKOFF_S]
+    with pytest.raises(QuotaExhausted):
+        llm.complete([], [])
+    assert sleeps == []
+    assert client.calls == 1
 
 
 def test_on_retry_called_on_rate_limit_with_wait_seconds(monkeypatch):
@@ -331,3 +335,44 @@ def test_complete_honors_retry_after_longer_than_old_cap(monkeypatch):
     msg = llm.complete([], [])
     assert msg.content == "ok"
     assert sleeps == [120.0]
+
+
+# --- Fix: fail fast on daily-quota-exhaustion waits, don't grind on retries ---
+
+def test_complete_raises_quota_exhausted_for_long_wait_no_sleep(monkeypatch):
+    import voicedesk.groq_client as gc
+
+    sleeps = []
+    monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
+
+    e = Exception("rate limit exceeded, please try again in 300s")
+    e.status_code = 429
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([e, good])
+    llm = GroqLLM(client=client, backoff_base=2.0)
+    with pytest.raises(QuotaExhausted) as exc_info:
+        llm.complete([], [])
+    assert sleeps == []
+    assert client.calls == 1
+    assert "daily quota" in str(exc_info.value)
+
+
+def test_complete_still_retries_short_rate_limit_wait(monkeypatch):
+    import voicedesk.groq_client as gc
+
+    sleeps = []
+    monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
+
+    e = Exception("rate limit exceeded, please try again in 5s")
+    e.status_code = 429
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([e, good])
+    llm = GroqLLM(client=client, backoff_base=2.0)
+    msg = llm.complete([], [])
+    assert msg.content == "ok"
+    assert sleeps == [5.0]
+    assert client.calls == 2
+
+
+def test_quota_exhausted_is_subclass_of_llm_error():
+    assert issubclass(QuotaExhausted, LLMError)

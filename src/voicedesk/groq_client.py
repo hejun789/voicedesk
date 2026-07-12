@@ -2,11 +2,13 @@ import json
 import os
 import re
 import time
-from voicedesk.llm import Message, ToolCall, LLMError
+from voicedesk.llm import Message, ToolCall, LLMError, QuotaExhausted
 
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 MAX_BACKOFF_S = 300.0
 TOKEN_HEADROOM = 3000  # roughly one agent call's worth of tokens
+QUOTA_EXHAUSTED_WAIT_S = 120.0  # a wait longer than this means a daily/long-window
+                                # quota, which will not clear by retrying
 
 _DURATION_RE = re.compile(r"(\d+(?:\.\d+)?)(ms|s|m|h)")
 
@@ -162,7 +164,14 @@ class GroqLLM:
                 if _is_rate_limited(e) and rate_attempts < self.rate_limit_retries:
                     rate_attempts += 1
                     self._update_limits(getattr(getattr(e, "response", None), "headers", None))
-                    wait = _retry_after_seconds(e)
+                    requested = _retry_after_seconds(e)
+                    if requested is not None and requested > QUOTA_EXHAUSTED_WAIT_S:
+                        raise QuotaExhausted(
+                            f"Groq asked for a {requested:.0f}s wait — the daily quota for "
+                            f"{self.model!r} is exhausted. Retrying will not help; try again later "
+                            f"or switch GROQ_MODEL."
+                        ) from e
+                    wait = requested
                     if wait is None:
                         wait = self.backoff_base * (2 ** (rate_attempts - 1))
                     wait = min(wait, MAX_BACKOFF_S)

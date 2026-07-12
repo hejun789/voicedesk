@@ -31,6 +31,11 @@ def resolve_model() -> str:
     return os.environ.get("GROQ_MODEL", DEFAULT_MODEL)
 
 
+def quota_exhausted(results) -> bool:
+    """True when any run failed because the provider's daily quota is gone."""
+    return any(r.record.error and "daily quota" in r.record.error for r in results)
+
+
 def _log_retry(reason: str, wait_s: float, attempt: int) -> None:
     if reason == "throttle":
         print(f"    approaching token limit — pausing {wait_s:.1f}s",
@@ -77,6 +82,15 @@ def main() -> None:
         print(f"[{i}/{len(scenarios)}] {scenario['id']} ... "
               f"{passed}/{len(scenario_results)}", file=sys.stderr, flush=True)
         results.extend(scenario_results)
+
+        if quota_exhausted(scenario_results):
+            print(
+                f"\n!! Groq daily quota exhausted for {model}. Stopping early "
+                f"after {i}/{len(scenarios)} scenarios.\n"
+                f"   Retrying will not help today. Results below cover only "
+                f"the scenarios that ran.\n",
+                file=sys.stderr, flush=True)
+            break
 
     print(format_console(results, model=model))
 

@@ -8,6 +8,11 @@ class LLMError(Exception):
     The agent catches this and degrades to a graceful escalation reply."""
 
 
+class QuotaExhausted(LLMError):
+    """The provider's long-window (e.g. daily) quota is exhausted. Retrying is
+    futile — the caller should stop, not back off."""
+
+
 @dataclass
 class ToolCall:
     id: str
