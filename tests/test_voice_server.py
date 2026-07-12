@@ -100,3 +100,17 @@ def test_same_session_id_keeps_conversation_history(conn):
     second = _post(client, session_id="s1").json()
     assert "name" in first["reply"]
     assert "Jane" in second["reply"]
+
+
+def test_index_page_is_served(conn):
+    client = _client(conn, FakeSTT([]), FakeLLM([]))
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "Hold to talk" in r.text
+
+
+def test_static_app_js_is_served(conn):
+    client = _client(conn, FakeSTT([]), FakeLLM([]))
+    r = client.get("/static/app.js")
+    assert r.status_code == 200
+    assert "speechSynthesis" in r.text

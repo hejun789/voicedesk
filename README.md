@@ -208,6 +208,16 @@ $env:PYTHONPATH = "src"; python -m voicedesk.cli
 ```
 > *"Book me Monday July 13th 2026 at 9am, Jane Doe, 5551234, for a cleaning."*
 
+### Talk to it by voice (Phase 3)
+```powershell
+$env:PYTHONPATH = "src"; python -m voicedesk.voice
+```
+Open <http://127.0.0.1:8000>, hold the button, and speak. The browser records your
+voice, Groq Whisper transcribes it, the same agent takes the action, and the browser
+speaks the reply back. Each turn shows its latency breakdown (stt / agent / total).
+
+Use Chrome or Edge — it needs `MediaRecorder` and the Web Speech API.
+
 ### Run the tests (154, fully offline — no API key needed)
 ```powershell
 $env:PYTHONPATH = "src"; python -m pytest -q

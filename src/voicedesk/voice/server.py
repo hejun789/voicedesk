@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from voicedesk.voice.stt import STTError
 
@@ -71,4 +72,5 @@ def create_app(stt, sessions) -> FastAPI:
                         "total_ms": _ms_since(started)},
         }
 
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app
