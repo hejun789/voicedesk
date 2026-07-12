@@ -5,7 +5,23 @@ import time
 from voicedesk.llm import Message, ToolCall, LLMError
 
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
-MAX_BACKOFF_S = 60.0
+MAX_BACKOFF_S = 300.0
+TOKEN_HEADROOM = 3000  # roughly one agent call's worth of tokens
+
+_DURATION_RE = re.compile(r"(\d+(?:\.\d+)?)(ms|s|m|h)")
+
+
+def _parse_duration(text: str | None) -> float:
+    """Parse a Groq reset string ('370ms', '6s', '1m26.4s') into seconds.
+    Returns 0.0 when it cannot be parsed."""
+    if not text:
+        return 0.0
+    seconds = 0.0
+    for amount, unit in _DURATION_RE.findall(str(text)):
+        value = float(amount)
+        seconds += {"ms": value / 1000, "s": value, "m": value * 60,
+                    "h": value * 3600}[unit]
+    return seconds
 
 
 def _to_message(choice) -> Message:
@@ -82,28 +98,70 @@ class GroqLLM:
         self.rate_limit_retries = rate_limit_retries
         self.backoff_base = backoff_base
         self.on_retry = on_retry
+        self._remaining_tokens: float | None = None
+        self._tokens_reset_s: float = 0.0
         if client is not None:
             self.client = client  # injected (used by tests — no network/key)
         else:
             from groq import Groq  # imported lazily so tests don't need the package
             self.client = Groq(api_key=api_key or os.environ["GROQ_API_KEY"])
 
+    def _update_limits(self, headers) -> None:
+        """Record the rate-limit state Groq reported on the last response."""
+        if not headers:
+            return
+        try:
+            remaining = headers.get("x-ratelimit-remaining-tokens")
+            reset = headers.get("x-ratelimit-reset-tokens")
+        except Exception:  # noqa: BLE001 - headers may not be dict-like
+            return
+        if remaining is not None:
+            try:
+                self._remaining_tokens = float(remaining)
+            except (TypeError, ValueError):
+                self._remaining_tokens = None
+        self._tokens_reset_s = _parse_duration(reset)
+
+    def _throttle(self) -> None:
+        """Wait BEFORE sending if the token bucket is nearly empty, so we never
+        provoke a 429 (each 429 still burns a request from the daily quota)."""
+        if self._remaining_tokens is None:
+            return
+        if self._remaining_tokens >= TOKEN_HEADROOM:
+            return
+        wait = min(self._tokens_reset_s + 0.5, MAX_BACKOFF_S)
+        if wait <= 0:
+            return
+        self._notify("throttle", wait, 0)
+        time.sleep(wait)
+        self._remaining_tokens = None  # unknown until the next response
+
+    def _create(self, messages: list[dict], tools: list[dict]):
+        """Returns (choice, headers | None)."""
+        kwargs = dict(model=self.model, messages=messages, tools=tools,
+                      tool_choice="auto")
+        raw = getattr(self.client.chat.completions, "with_raw_response", None)
+        if raw is not None:
+            response = raw.create(**kwargs)
+            parsed = response.parse()
+            return parsed.choices[0], response.headers
+        resp = self.client.chat.completions.create(**kwargs)
+        return resp.choices[0], None
+
     def complete(self, messages: list[dict], tools: list[dict]) -> Message:
         tool_attempts = 0
         rate_attempts = 0
         while True:
             try:
-                resp = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    tools=tools,
-                    tool_choice="auto",
-                )
-                return _to_message(resp.choices[0])
+                self._throttle()
+                choice, headers = self._create(messages, tools)
+                self._update_limits(headers)
+                return _to_message(choice)
             except Exception as e:  # noqa: BLE001 - translated to LLMError below
                 # Rate limits: wait exactly as long as Groq asked, then retry.
                 if _is_rate_limited(e) and rate_attempts < self.rate_limit_retries:
                     rate_attempts += 1
+                    self._update_limits(getattr(getattr(e, "response", None), "headers", None))
                     wait = _retry_after_seconds(e)
                     if wait is None:
                         wait = self.backoff_base * (2 ** (rate_attempts - 1))

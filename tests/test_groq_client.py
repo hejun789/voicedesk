@@ -206,3 +206,128 @@ def test_complete_works_without_on_retry_callback():
     llm = GroqLLM(client=client)
     msg = llm.complete([], [])
     assert msg.content == "ok"
+
+
+# --- Fix 1 & 2: honor full Retry-After, proactive throttling from headers ---
+
+def test_parse_duration_milliseconds():
+    from voicedesk.groq_client import _parse_duration
+    assert _parse_duration("370ms") == pytest.approx(0.37)
+
+
+def test_parse_duration_seconds():
+    from voicedesk.groq_client import _parse_duration
+    assert _parse_duration("6s") == 6.0
+
+
+def test_parse_duration_minutes_and_seconds():
+    from voicedesk.groq_client import _parse_duration
+    assert _parse_duration("1m26.4s") == pytest.approx(86.4)
+
+
+def test_parse_duration_none():
+    from voicedesk.groq_client import _parse_duration
+    assert _parse_duration(None) == 0.0
+
+
+def test_parse_duration_garbage():
+    from voicedesk.groq_client import _parse_duration
+    assert _parse_duration("garbage") == 0.0
+
+
+class _FakeRawResponse:
+    def __init__(self, choice, headers):
+        self._choice = choice
+        self.headers = headers
+
+    def parse(self):
+        return SimpleNamespace(choices=[self._choice])
+
+
+class _FakeGroqClientWithRawResponse:
+    """Exposes chat.completions.with_raw_response.create(...), like the real
+    groq SDK, so we can capture rate-limit headers on every response."""
+
+    def __init__(self, behaviors):
+        self.behaviors = list(behaviors)
+        self.calls = 0
+        outer = self
+
+        def _create(**kw):
+            return outer._next()
+
+        self.chat = SimpleNamespace(
+            completions=SimpleNamespace(
+                with_raw_response=SimpleNamespace(create=_create),
+            )
+        )
+
+    def _next(self):
+        b = self.behaviors[self.calls]
+        self.calls += 1
+        if isinstance(b, Exception):
+            raise b
+        return b
+
+
+def test_complete_records_limits_from_raw_response_headers():
+    choice = _fake_choice(content="ok")
+    headers = {"x-ratelimit-remaining-tokens": "500", "x-ratelimit-reset-tokens": "2s"}
+    raw = _FakeRawResponse(choice, headers)
+    client = _FakeGroqClientWithRawResponse([raw])
+    llm = GroqLLM(client=client)
+    msg = llm.complete([], [])
+    assert msg.content == "ok"
+    assert llm._remaining_tokens == 500.0
+    assert llm._tokens_reset_s == 2.0
+
+
+def test_throttle_sleeps_when_bucket_low(monkeypatch):
+    import voicedesk.groq_client as gc
+
+    sleeps = []
+    monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
+
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([good])
+    calls = []
+    llm = GroqLLM(client=client,
+                  on_retry=lambda reason, wait_s, attempt: calls.append((reason, wait_s, attempt)))
+    llm._remaining_tokens = 100
+    llm._tokens_reset_s = 2.0
+    msg = llm.complete([], [])
+    assert msg.content == "ok"
+    assert sleeps == [pytest.approx(2.5)]
+    assert calls == [("throttle", pytest.approx(2.5), 0)]
+
+
+def test_throttle_does_not_sleep_when_bucket_high(monkeypatch):
+    import voicedesk.groq_client as gc
+
+    sleeps = []
+    monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
+
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([good])
+    llm = GroqLLM(client=client)
+    llm._remaining_tokens = 10000
+    llm._tokens_reset_s = 2.0
+    msg = llm.complete([], [])
+    assert msg.content == "ok"
+    assert sleeps == []
+
+
+def test_complete_honors_retry_after_longer_than_old_cap(monkeypatch):
+    import voicedesk.groq_client as gc
+
+    sleeps = []
+    monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
+
+    e = Exception("rate limit exceeded, please try again in 120s")
+    e.status_code = 429
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([e, good])
+    llm = GroqLLM(client=client, backoff_base=2.0)
+    msg = llm.complete([], [])
+    assert msg.content == "ok"
+    assert sleeps == [120.0]

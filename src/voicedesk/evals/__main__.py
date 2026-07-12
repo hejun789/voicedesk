@@ -32,7 +32,10 @@ def resolve_model() -> str:
 
 
 def _log_retry(reason: str, wait_s: float, attempt: int) -> None:
-    if reason == "rate_limited":
+    if reason == "throttle":
+        print(f"    approaching token limit — pausing {wait_s:.1f}s",
+              file=sys.stderr, flush=True)
+    elif reason == "rate_limited":
         print(f"    rate limited — waiting {wait_s:.1f}s (retry {attempt})",
               file=sys.stderr, flush=True)
     else:
