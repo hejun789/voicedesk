@@ -1,0 +1,109 @@
+import sys
+import threading
+import time
+from pathlib import Path
+
+from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
+
+from voicedesk.voice.stt import STTError, is_silence_hallucination
+
+STATIC_DIR = Path(__file__).parent / "static"
+
+DIDNT_CATCH = "Sorry, I didn't catch that. Could you say that again?"
+STT_FAILED = (
+    "Sorry, I'm having trouble hearing you. "
+    "Let me have a team member call you back."
+)
+
+# A tap (rather than a hold) makes MediaRecorder emit an empty/near-empty
+# blob. Treat anything under this as "didn't catch that" rather than
+# spending an STT call on it.
+MIN_AUDIO_BYTES = 1000
+
+# Guard against absurdly large uploads.
+MAX_AUDIO_BYTES = 10 * 1024 * 1024
+
+
+def _ms_since(start: float) -> int:
+    return int((time.perf_counter() - start) * 1000)
+
+
+def create_app(stt, sessions, lock=None) -> FastAPI:
+    """`stt` implements STTClient; `sessions` is a SessionStore. Both are
+    injected so the whole app can be tested with no network and no microphone.
+
+    `lock` serialises access to the shared sqlite3.Connection, since blocking
+    work is offloaded to the threadpool and multiple worker threads may call
+    into the agent concurrently. Defaults to a fresh threading.Lock()."""
+    if lock is None:
+        lock = threading.Lock()
+    app = FastAPI(title="VoiceDesk")
+
+    @app.get("/")
+    def index():
+        return FileResponse(STATIC_DIR / "index.html")
+
+    @app.post("/turn")
+    async def turn(
+        session_id: str = Form(...),
+        audio: UploadFile = File(...),
+    ):
+        started = time.perf_counter()
+        data = await audio.read()
+
+        if len(data) < MIN_AUDIO_BYTES or len(data) > MAX_AUDIO_BYTES:
+            # A stray tap or an oversized upload — don't spend an STT call,
+            # don't touch the agent, just apologise.
+            return {
+                "transcript": "",
+                "reply": DIDNT_CATCH,
+                "timings": {"stt_ms": 0, "agent_ms": 0,
+                            "total_ms": _ms_since(started)},
+            }
+
+        stt_started = time.perf_counter()
+        try:
+            transcript = await run_in_threadpool(stt.transcribe, data, "turn.webm")
+        except STTError as e:
+            # Never crash the call — speak an apology and report the error.
+            print(f"[voice] STT error: {e}", file=sys.stderr, flush=True)
+            return {
+                "transcript": "",
+                "reply": STT_FAILED,
+                "timings": {"stt_ms": _ms_since(stt_started), "agent_ms": 0,
+                            "total_ms": _ms_since(started)},
+                "error": "stt_failed",
+            }
+        stt_ms = _ms_since(stt_started)
+
+        if not transcript.strip() or is_silence_hallucination(transcript):
+            # Don't spend an LLM call, and don't pollute the history with noise.
+            return {
+                "transcript": "",
+                "reply": DIDNT_CATCH,
+                "timings": {"stt_ms": stt_ms, "agent_ms": 0,
+                            "total_ms": _ms_since(started)},
+            }
+
+        agent_started = time.perf_counter()
+
+        def _run_agent() -> str:
+            with lock:
+                agent = sessions.get_or_create(session_id)
+                return agent.respond(transcript)
+
+        reply = await run_in_threadpool(_run_agent)
+        agent_ms = _ms_since(agent_started)
+
+        return {
+            "transcript": transcript,
+            "reply": reply,
+            "timings": {"stt_ms": stt_ms, "agent_ms": agent_ms,
+                        "total_ms": _ms_since(started)},
+        }
+
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    return app

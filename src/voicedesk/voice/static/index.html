@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>VoiceDesk — BrightSmile Dental</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 3rem auto;
+           padding: 0 1rem; color: #1a1a1a; }
+    h1 { font-size: 1.4rem; }
+    #talk { width: 100%; padding: 1.5rem; font-size: 1.1rem; border-radius: 12px;
+            border: 2px solid #2563eb; background: #eff6ff; color: #1e40af;
+            cursor: pointer; user-select: none; }
+    #talk.recording { background: #dc2626; border-color: #dc2626; color: #fff; }
+    #talk:disabled { opacity: .5; cursor: default; }
+    .turn { margin-top: 1.5rem; padding: 1rem; border-radius: 10px; background: #f5f5f5; }
+    .label { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em;
+             color: #666; }
+    .you { font-weight: 600; }
+    #timings { margin-top: 1rem; font-family: ui-monospace, monospace; font-size: .8rem;
+               color: #555; }
+    .hint { color: #666; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <h1>VoiceDesk — BrightSmile Dental</h1>
+  <p class="hint">Hold the button, speak, then release. Try:
+    <em>"Book me Monday July 13th 2026 at 9am, Jane Doe, 5551234, for a cleaning."</em></p>
+
+  <button id="talk">Hold to talk</button>
+
+  <div class="turn">
+    <div class="label">You said</div>
+    <div id="transcript" class="you">—</div>
+    <div class="label" style="margin-top:.75rem">Receptionist</div>
+    <div id="reply">—</div>
+    <div id="timings"></div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
