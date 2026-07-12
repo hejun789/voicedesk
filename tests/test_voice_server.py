@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from voicedesk.db import init_db
-from voicedesk.agent import Agent
+from voicedesk.agent import Agent, _FALLBACK
 from voicedesk.llm import FakeLLM, Message, ToolCall
 from voicedesk.tools import lookup_appt
 from voicedesk.voice.stt import FakeSTT, STTError
@@ -137,6 +137,15 @@ def test_same_session_id_keeps_conversation_history(conn):
     second = _post(client, session_id="s1").json()
     assert "name" in first["reply"]
     assert "Jane" in second["reply"]
+
+
+def test_agent_fallback_still_returns_200_with_fallback_reply(conn):
+    stt = FakeSTT(["gym dorm 5551234 for a cleaning"])
+    llm = FakeLLM([Message(content=_FALLBACK, tool_calls=[])])
+    r = _post(_client(conn, stt, llm))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["reply"] == _FALLBACK
 
 
 def test_index_page_is_served(conn):

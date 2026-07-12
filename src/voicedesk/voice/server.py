@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
+from voicedesk.agent import _FALLBACK as AGENT_FALLBACK
 from voicedesk.voice.stt import STTError, is_silence_hallucination
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -97,6 +98,10 @@ def create_app(stt, sessions, lock=None) -> FastAPI:
 
         reply = await run_in_threadpool(_run_agent)
         agent_ms = _ms_since(agent_started)
+
+        if reply == AGENT_FALLBACK:
+            print(f"[voice] agent fell back (LLM error or iteration cap) on: "
+                  f"{transcript!r}", file=sys.stderr, flush=True)
 
         return {
             "transcript": transcript,

@@ -1,4 +1,5 @@
 import sqlite3
+import sys
 
 import uvicorn
 from dotenv import load_dotenv
@@ -11,6 +12,18 @@ from voicedesk.voice.session import SessionStore
 from voicedesk.voice.stt import GroqWhisper
 
 
+def _log_retry(reason: str, wait_s: float, attempt: int) -> None:
+    if reason == "rate_limited":
+        print(f"[voice] rate limited — waiting {wait_s:.1f}s (retry {attempt})",
+              file=sys.stderr, flush=True)
+    elif reason == "throttle":
+        print(f"[voice] approaching token limit — pausing {wait_s:.1f}s",
+              file=sys.stderr, flush=True)
+    else:
+        print(f"[voice] malformed tool call — resampling (retry {attempt})",
+              file=sys.stderr, flush=True)
+
+
 def main() -> None:
     load_dotenv()
     # check_same_thread=False: the blocking STT/agent work in /turn is
@@ -20,7 +33,7 @@ def main() -> None:
     conn.row_factory = sqlite3.Row
     init_db(conn)
 
-    sessions = SessionStore(lambda: Agent(conn, GroqLLM()))
+    sessions = SessionStore(lambda: Agent(conn, GroqLLM(on_retry=_log_retry)))
     app = create_app(GroqWhisper(), sessions)
 
     print("VoiceDesk is listening on http://127.0.0.1:8000")

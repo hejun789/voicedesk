@@ -71,6 +71,23 @@ def test_groq_whisper_sends_language_and_temperature_to_reduce_hallucination():
     assert sent["temperature"] == 0
 
 
+def test_groq_whisper_sends_default_prompt_mentioning_brightsmile():
+    client = _FakeAudioClient(SimpleNamespace(text="hi"))
+    stt = GroqWhisper(client=client)
+    stt.transcribe(b"audiobytes", "turn.webm")
+    sent = client.calls[0]
+    assert sent["prompt"]
+    assert "BrightSmile" in sent["prompt"]
+
+
+def test_groq_whisper_custom_prompt_overrides_default():
+    client = _FakeAudioClient(SimpleNamespace(text="hi"))
+    stt = GroqWhisper(client=client, prompt="custom words")
+    stt.transcribe(b"audiobytes", "turn.webm")
+    sent = client.calls[0]
+    assert sent["prompt"] == "custom words"
+
+
 def test_is_silence_hallucination_true_for_known_artefacts():
     assert is_silence_hallucination("Thank you.") is True
     assert is_silence_hallucination("  THANK YOU.  ") is True
