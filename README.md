@@ -218,7 +218,7 @@ speaks the reply back. Each turn shows its latency breakdown (stt / agent / tota
 
 Use Chrome or Edge — it needs `MediaRecorder` and the Web Speech API.
 
-### Run the tests (154, fully offline — no API key needed)
+### Run the tests (178, fully offline — no API key needed)
 ```powershell
 $env:PYTHONPATH = "src"; python -m pytest -q
 ```

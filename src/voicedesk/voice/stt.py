@@ -9,6 +9,16 @@ class STTError(Exception):
     than crashing the call."""
 
 
+# Whisper emits these on silence/noise rather than an empty string.
+SILENCE_HALLUCINATIONS = {"thank you.", "thank you", "you", "bye.", "bye",
+                          "thanks for watching!", ".", "so"}
+
+
+def is_silence_hallucination(text: str) -> bool:
+    """True when a transcript is one of Whisper's known silence artefacts."""
+    return text.strip().lower() in SILENCE_HALLUCINATIONS
+
+
 class STTClient(Protocol):
     def transcribe(self, audio: bytes, filename: str = "audio.webm") -> str: ...
 
@@ -44,6 +54,8 @@ class GroqWhisper:
             resp = self.client.audio.transcriptions.create(
                 file=(filename, audio),
                 model=self.model,
+                language="en",
+                temperature=0,
             )
         except Exception as e:  # noqa: BLE001 - translated to STTError
             raise STTError(str(e)) from e

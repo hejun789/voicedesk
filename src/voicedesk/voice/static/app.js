@@ -8,9 +8,24 @@ const sessionId = crypto.randomUUID();
 
 let recorder = null;
 let chunks = [];
+let wantsToRecord = false;
 
 async function startRecording() {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  wantsToRecord = true;
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    replyEl.textContent = "Microphone blocked — allow mic access and reload.";
+    talk.classList.remove("recording");
+    talk.textContent = "Hold to talk";
+    wantsToRecord = false;
+    return;
+  }
+  if (!wantsToRecord) {           // released before permission resolved
+    stream.getTracks().forEach((t) => t.stop());
+    return;
+  }
   recorder = new MediaRecorder(stream);
   chunks = [];
   recorder.ondataavailable = (e) => chunks.push(e.data);
@@ -24,12 +39,19 @@ async function startRecording() {
 }
 
 function stopRecording() {
+  wantsToRecord = false;
   if (recorder && recorder.state === "recording") recorder.stop();
   talk.classList.remove("recording");
   talk.textContent = "Hold to talk";
 }
 
 async function send(blob) {
+  if (!blob || blob.size < 1000) {
+    transcriptEl.textContent = "(didn't catch that)";
+    replyEl.textContent = "Sorry, I didn't catch that. Could you say that again?";
+    return;
+  }
+
   talk.disabled = true;
   transcriptEl.textContent = "…";
   replyEl.textContent = "";

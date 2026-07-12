@@ -13,7 +13,9 @@ from voicedesk.voice.stt import GroqWhisper
 
 def main() -> None:
     load_dotenv()
-    # check_same_thread=False: FastAPI serves requests on a worker thread.
+    # check_same_thread=False: the blocking STT/agent work in /turn is
+    # offloaded to the threadpool, so this connection is used from worker
+    # threads, not the event-loop thread.
     conn = sqlite3.connect("voicedesk.db", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     init_db(conn)

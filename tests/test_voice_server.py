@@ -8,7 +8,13 @@ from voicedesk.llm import FakeLLM, Message, ToolCall
 from voicedesk.tools import lookup_appt
 from voicedesk.voice.stt import FakeSTT, STTError
 from voicedesk.voice.session import SessionStore
-from voicedesk.voice.server import create_app, DIDNT_CATCH, STT_FAILED
+from voicedesk.voice.server import (
+    create_app,
+    DIDNT_CATCH,
+    STT_FAILED,
+    MIN_AUDIO_BYTES,
+    MAX_AUDIO_BYTES,
+)
 
 
 class _RaisingSTT:
@@ -30,7 +36,7 @@ def _client(conn, stt, llm):
     return TestClient(create_app(stt, sessions))
 
 
-def _post(client, audio=b"fakeaudio", session_id="s1"):
+def _post(client, audio=b"x" * 2000, session_id="s1"):
     return client.post(
         "/turn",
         data={"session_id": session_id},
@@ -86,7 +92,38 @@ def test_stt_failure_degrades_gracefully(conn):
     assert r.status_code == 200          # never a stack trace mid-call
     body = r.json()
     assert body["reply"] == STT_FAILED
-    assert "429" in body["error"]
+    assert body["error"] == "stt_failed"  # no raw upstream text leaked to the browser
+
+
+def test_tiny_audio_is_treated_as_a_stray_tap(conn):
+    stt = FakeSTT([])  # a call would IndexError -> proves it wasn't called
+    llm = FakeLLM([])  # any agent call would IndexError -> proves it wasn't called
+    r = _post(_client(conn, stt, llm), audio=b"tiny")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["reply"] == DIDNT_CATCH
+    assert body["transcript"] == ""
+    assert body["timings"]["stt_ms"] == 0
+    assert body["timings"]["agent_ms"] == 0
+
+
+def test_oversized_audio_does_not_call_stt_or_agent(conn):
+    stt = FakeSTT([])
+    llm = FakeLLM([])
+    r = _post(_client(conn, stt, llm), audio=b"x" * (MAX_AUDIO_BYTES + 1))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["reply"] == DIDNT_CATCH
+    assert body["transcript"] == ""
+
+
+def test_silence_hallucination_does_not_call_the_agent(conn):
+    stt = FakeSTT(["Thank you."])
+    llm = FakeLLM([])  # any agent call would IndexError -> proves it wasn't called
+    r = _post(_client(conn, stt, llm), audio=b"x" * 2000)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["reply"] == DIDNT_CATCH
 
 
 def test_same_session_id_keeps_conversation_history(conn):

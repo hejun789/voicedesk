@@ -1,6 +1,12 @@
 import pytest
 from types import SimpleNamespace
-from voicedesk.voice.stt import FakeSTT, GroqWhisper, STTError, DEFAULT_STT_MODEL
+from voicedesk.voice.stt import (
+    FakeSTT,
+    GroqWhisper,
+    STTError,
+    DEFAULT_STT_MODEL,
+    is_silence_hallucination,
+)
 
 
 class _FakeAudioClient:
@@ -54,3 +60,22 @@ def test_groq_whisper_wraps_api_errors_in_stterror():
     stt = GroqWhisper(client=client)
     with pytest.raises(STTError):
         stt.transcribe(b"x")
+
+
+def test_groq_whisper_sends_language_and_temperature_to_reduce_hallucination():
+    client = _FakeAudioClient(SimpleNamespace(text="hi"))
+    stt = GroqWhisper(client=client)
+    stt.transcribe(b"audiobytes", "turn.webm")
+    sent = client.calls[0]
+    assert sent["language"] == "en"
+    assert sent["temperature"] == 0
+
+
+def test_is_silence_hallucination_true_for_known_artefacts():
+    assert is_silence_hallucination("Thank you.") is True
+    assert is_silence_hallucination("  THANK YOU.  ") is True
+    assert is_silence_hallucination("bye") is True
+
+
+def test_is_silence_hallucination_false_for_real_speech():
+    assert is_silence_hallucination("book me monday") is False
