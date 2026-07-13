@@ -88,7 +88,11 @@ class GroqLLM:
         model: str | None = None,
         api_key: str | None = None,
         client=None,
-        max_retries: int = 3,
+        # Groq's Llama models intermittently emit a malformed <function=..> tool
+        # call that the API itself rejects. It is non-deterministic, so a resample
+        # usually fixes it — but two attempts is not enough in practice, and an
+        # exhausted budget makes the agent give up mid-call.
+        max_retries: int = 6,
         rate_limit_retries: int = 6,
         backoff_base: float = 2.0,
         on_retry: "callable | None" = None,

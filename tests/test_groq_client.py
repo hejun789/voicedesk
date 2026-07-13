@@ -376,3 +376,14 @@ def test_complete_still_retries_short_rate_limit_wait(monkeypatch):
 
 def test_quota_exhausted_is_subclass_of_llm_error():
     assert issubclass(QuotaExhausted, LLMError)
+
+
+def test_default_tool_use_retry_budget_survives_five_malformed_calls():
+    """Groq's malformed-tool-call bug is flaky enough that two resamples is not
+    enough — an exhausted budget makes the agent give up mid-call. The default
+    must tolerate a run of them and still succeed."""
+    good = SimpleNamespace(choices=[_fake_choice(content="booked")])
+    client = _FakeGroqClient([_tool_use_failed_error() for _ in range(5)] + [good])
+    llm = GroqLLM(client=client)  # default max_retries
+    assert llm.complete([], []).content == "booked"
+    assert client.calls == 6  # 5 malformed, resampled each time, then success
