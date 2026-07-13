@@ -103,6 +103,16 @@ def test_build_system_prompt_lookup_appt_name_or_phone_alone():
     assert "name ALONE or a phone number ALONE" in prompt
 
 
+def test_build_system_prompt_forbids_second_appointment_for_same_person():
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "NEVER book a second appointment for the same person" in prompt
+
+
+def test_build_system_prompt_mentions_already_booked_that_day_error():
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "already_booked_that_day" in prompt
+
+
 def test_agent_default_system_prompt_has_current_year(db):
     agent = Agent(db, FakeLLM([]))
     assert str(date.today().year) in agent.messages[0]["content"]

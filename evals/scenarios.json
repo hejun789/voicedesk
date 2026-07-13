@@ -315,7 +315,8 @@
     ],
     "expect": {
       "escalated": false,
-      "appointments": [{"patient_name": "Jane Doe", "slot_iso": "2026-07-13T11:00", "status": "booked"}]
+      "appointments": [{"patient_name": "Jane Doe", "slot_iso": "2026-07-13T11:00", "status": "booked"}],
+      "appointment_count": 1
     }
   }
 ]

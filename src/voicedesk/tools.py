@@ -92,6 +92,14 @@ def book(
         return {"ok": False, "error": "slot_unavailable"}
     slot_iso = normalized_slot
     day_iso = slot_iso.split("T")[0]
+    existing = conn.execute(
+        "SELECT slot_iso FROM appointments "
+        "WHERE phone = ? AND status = 'booked' AND slot_iso LIKE ?",
+        (phone, f"{day_iso}T%"),
+    ).fetchone()
+    if existing is not None:
+        return {"ok": False, "error": "already_booked_that_day",
+                "existing_slot_iso": existing[0]}
     if slot_iso not in find_slots(conn, day_iso):
         return {"ok": False, "error": "slot_unavailable"}
     cur = conn.execute(

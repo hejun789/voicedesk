@@ -38,6 +38,12 @@ def build_system_prompt(today: date) -> str:
         "lookup_appt works with a name ALONE or a phone number ALONE — you do not need "
         "both. If the caller gives you either one, call lookup_appt with what you have "
         "instead of asking for more. "
+        "If the caller changes the time or day of an appointment that already exists — "
+        "including one you booked earlier in this same call — you MUST look it up and "
+        "reschedule it. NEVER book a second appointment for the same person; they must "
+        "end the call with exactly one appointment. "
+        "If a tool reports already_booked_that_day, that patient already has an "
+        "appointment that day. Do not book again — call lookup_appt and then reschedule. "
         "Keep replies short and natural, as if speaking on a phone call."
     )
 
