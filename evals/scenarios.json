@@ -16,7 +16,8 @@
       "Hi, I'd like to make an appointment.",
       "Monday July 13th 2026 at 10am works.",
       "John Smith, 5559876.",
-      "It's for a filling."
+      "It's for a filling.",
+      "Yes, that's correct."
     ],
     "expect": {
       "tools_called": ["book"],
@@ -29,7 +30,8 @@
     "category": "booking",
     "turns": [
       "What times do you have available on Tuesday July 14th 2026?",
-      "Book the 2pm one. Mary Lee, 5552222, for a checkup."
+      "Book the 2pm one. Mary Lee, 5552222, for a checkup.",
+      "Yes, that's correct."
     ],
     "expect": {
       "tools_called": ["find_slots", "book"],
@@ -311,7 +313,8 @@
     "category": "ambiguous",
     "turns": [
       "Book me Monday July 13th 2026 at 9am. Jane Doe, 5551234, for a cleaning.",
-      "Actually, can you make it 11am instead?"
+      "Actually, can you make it 11am instead?",
+      "Yes, that's correct."
     ],
     "expect": {
       "escalated": false,

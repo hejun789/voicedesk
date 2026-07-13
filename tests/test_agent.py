@@ -87,6 +87,16 @@ def test_build_system_prompt_forbids_inventing_appointment_id():
     assert "NEVER invent or guess an appointment_id" in prompt
 
 
+def test_build_system_prompt_requires_digit_by_digit_phone_readback():
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "DIGIT BY DIGIT" in prompt
+
+
+def test_build_system_prompt_forbids_speaking_internal_ids_aloud():
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "Never say an appointment_id, database id, or any internal identifier out loud" in prompt
+
+
 def test_build_system_prompt_requires_escalation_for_medical_and_billing():
     prompt = build_system_prompt(date(2026, 7, 10))
     assert "medical" in prompt.lower()
