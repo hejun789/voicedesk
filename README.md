@@ -7,8 +7,14 @@ human when it shouldn't be acting alone.
 It is not a chatbot. It takes actions against a real calendar, and every action it
 takes is measured by an evaluation harness.
 
-**Headline result: fixing the bugs the eval harness found took the agent from a
-53.3% to an 86.7% pass rate across 30 scripted caller scenarios.**
+**Headline result: eval-driven debugging took the agent from a 53.3% to an 86.7% pass
+rate across 30 scripted caller scenarios. The most rigorous measurement — 30 scenarios
+× 3 runs, 90 runs total — puts it at 84.4% with per-scenario reliability data.
+Voice turns complete in ~1.9s (p50).**
+
+**But the part worth reading is [what using the product caught that the eval
+passed](#what-using-the-product-caught-that-the-eval-passed), and [the two bugs in the
+eval itself](#and-two-bugs-in-the-eval-itself).**
 
 ---
 
@@ -144,32 +150,104 @@ replied *"Do you have an appointment scheduled?"*.
 
 ---
 
+## What using the product caught (that the eval passed)
+
+Then I ran the voice demo myself, and it found five more — **including one the eval
+was actively reporting as PASS.**
+
+**6. The agent silently double-booked.**
+I booked 9am, then said *"change it to 10am"*. It replied *"your appointment has been
+booked for 10am"* — and created a **second** appointment. The 9am slot stayed occupied.
+**The eval scenario for this passed**, because its assertion only checked that the new
+appointment existed — never that the old one was gone.
+**Fix:** `book()` now refuses a second same-day booking for the same patient
+(`already_booked_that_day`), and the scenario now asserts `appointment_count: 1`, so it
+can actually fail on the bug it was written for.
+
+**7. It committed a phone number it mis-heard.**
+Whisper transcribed `5551234` as `55512344`. The agent booked it instantly. That
+appointment is attached to a number that doesn't exist — unreachable, uncancellable.
+No STT is reliable on digit sequences; they carry no linguistic context.
+**Fix:** the agent must now read the details back — phone **digit by digit** — and get an
+explicit yes *before* calling `book()`. This is what every real phone system does, and it
+is the only thing that actually works.
+
+**8. It read the database ID out loud.** *"Your appointment ID is 1."* No receptionist
+says that. **Fix:** internal identifiers are for tool calls, never for callers.
+
+**9. Whisper mis-heard "Jane Doe" as "gym, dorm."** **Fix:** a transcription prompt
+biasing Whisper toward the vocabulary a clinic call actually contains. Proper nouns are
+its weakest point without context.
+
+**10. The agent gave up mid-call** — *"let me have a team member call you back"* — on a
+perfectly good request. Invisible, because the voice server logged nothing.
+**Fix:** surfaced LLM retries and fallbacks in the server log, then found the cause: two
+resamples was too few for Groq's flaky tool-calling. Raised the budget.
+
+---
+
+## And two bugs in the eval itself
+
+Reading the *failures* (not the score) found two cases where the agent was right and the
+**test** was wrong:
+
+**11. A Unicode space defeated an assertion.** `faq_location` failed with
+*"reply did not contain 'Market Street'"* — while the reply read
+`located at␠200␠Market␠Street`. Those are U+202F **narrow no-break spaces**. The answer
+was perfect; the substring check was brittle. **Fix:** `reply_contains` now normalizes
+whitespace, so it tests the words rather than the typography.
+
+**12. The eval punished the agent for being careful.** Every cancel/reschedule failure
+looked like `lookup_appt(...)` → *stop*. The agent was asking *"shall I cancel your
+Monday 9am?"* — and the scenario had no turn left to answer, so it never acted.
+Confirming before a destructive action is **correct**; the scenario was under-specified.
+**Fix:** made the confirm-before-destructive-action contract explicit in the prompt, and
+gave those scenarios their confirmation turn. The agent wasn't made more reckless to
+satisfy the test.
+
+---
+
 ## Results
 
-30 scenarios, `llama-3.1-8b-instant`, identical scenarios before and after:
+**Most rigorous measurement — 30 scenarios × 3 runs (90 runs), `openai/gpt-oss-120b`:**
 
-| Category | Before | After |
-|---|---:|---:|
-| Booking | 33% | **100%** |
-| FAQ | 0% | **100%** |
-| Cancel | 67% | **100%** |
-| Reschedule | 33% | 67% |
-| Escalation | 40% | 60% |
-| Unavailable slots | 100% | 100% |
-| Ambiguous input | 100% | 100% |
-| **Overall** | **53.3%** | **86.7%** |
+| Category | Pass rate |
+|---|---:|
+| Unavailable slots | **100%** (12/12) |
+| Lookup | **100%** (6/6) |
+| Ambiguous input | **100%** (9/9) |
+| Escalation | **93%** (14/15) |
+| FAQ | 92% (11/12) |
+| Booking | 89% (16/18) |
+| Cancel | 56% (5/9) |
+| Reschedule | 33% (3/9) |
+| **Overall** | **84.4%** (76/90) |
+
+**Per-turn voice latency: p50 1.86s** end-to-end (speech in → action taken → speech out).
+
+**The improvement story** — same model, same scenarios, one variable changed (the bugs
+above), single run each: **53.3% → 86.7%** on `llama-3.1-8b-instant`. Booking went
+33% → 100%, FAQ 0% → 100%.
 
 **Honest caveats** (these matter more than the number):
 
-- These are single-run figures. A full 3× reliability pass was blocked by free-tier
-  quota; the harness supports it (`--runs 3`) and reports FLAKY scenarios when run.
-- The remaining failures are concentrated in **escalation**, which is the category I'd
-  fix next precisely because it's the safety-critical one.
+- **The 84.4% predates the two eval-bug fixes (#11, #12).** Most of the cancel/reschedule
+  gap is the eval cutting the conversation off before the agent could act — not the agent
+  failing. A partial re-run after the fixes showed FAQ at 100% and booking at 94% before
+  free-tier quota stopped it; **the full post-fix number is not yet measured, so the
+  honest headline stays at 84.4%.**
+- **The 53.3% → 86.7% pair are single runs.** Single-run eval numbers are noisy — I watched
+  the same scenario fail and then pass on consecutive runs. That is exactly why the harness
+  runs each scenario 3× and reports FLAKY as a first-class result.
+- **`llama-3.1-8b-instant` is not a viable production model here.** It invents
+  `appointment_id`s rather than using the one `lookup_appt` returned — a small-model
+  multi-step-tool-use failure. `openai/gpt-oss-120b` doesn't do this, and doesn't have the
+  Llama family's malformed-`<function=...>` bug either. That choice was made from eval data,
+  not vibes.
 - The weekend/out-of-hours scenarios prove the *database* invariant (no appointment is
-  created) but cannot yet detect a hallucinated verbal confirmation. That needs a
-  judge-based check.
-- I stopped tuning at 86.7% deliberately. Grinding a prompt until the eval goes green is
-  optimizing the test, not the product.
+  created) but cannot detect a hallucinated verbal confirmation. That needs a judge.
+- **I stopped tuning deliberately.** Grinding a prompt until the eval goes green optimizes
+  the test, not the product.
 
 ---
 
