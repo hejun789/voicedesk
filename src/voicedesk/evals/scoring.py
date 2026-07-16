@@ -1,4 +1,15 @@
+import re
 from dataclasses import dataclass, field
+
+
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _normalize_text(text: str) -> str:
+    """Collapse every kind of whitespace (models emit U+00A0, U+202F, U+2009,
+    newlines...) to single ASCII spaces, so a reply_contains check tests the
+    words rather than the typography."""
+    return _WHITESPACE_RE.sub(" ", text).strip()
 
 
 @dataclass
@@ -61,7 +72,8 @@ def score_run(record: RunRecord, expect: dict) -> RunResult:
 
     if "reply_contains" in expect:
         needle = expect["reply_contains"]
-        if needle.lower() not in record.final_reply.lower():
+        haystack = _normalize_text(record.final_reply).lower()
+        if _normalize_text(needle).lower() not in haystack:
             failures.append(
                 f"reply did not contain {needle!r}; reply={record.final_reply!r}")
 

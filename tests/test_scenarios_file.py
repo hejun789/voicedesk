@@ -67,3 +67,13 @@ def test_booking_scenarios_require_a_confirmation_turn(scenarios):
         )
         if books and booked:
             assert len(s["turns"]) >= 2, s["id"]
+
+
+def test_destructive_scenarios_require_a_confirmation_turn(scenarios):
+    # The agent must read the found appointment back and get an explicit yes
+    # before cancelling or rescheduling it, so those actions can never
+    # complete in a single turn either.
+    for s in scenarios:
+        tools_called = s["expect"].get("tools_called", [])
+        if "cancel" in tools_called or "reschedule" in tools_called:
+            assert len(s["turns"]) >= 2, s["id"]

@@ -61,6 +61,40 @@ def test_fails_on_reply_contains():
     assert res.passed is False
 
 
+def test_reply_contains_passes_on_exact_substring():
+    res = score_run(
+        _record(final_reply="located at 200 Market Street"),
+        {"reply_contains": "Market Street"},
+    )
+    assert res.passed is True
+
+
+def test_reply_contains_ignores_unicode_whitespace_differences():
+    # Model emitted U+202F (narrow no-break space) between "Market" and
+    # "Street"; the words are still there and the check must still pass.
+    res = score_run(
+        _record(final_reply="200 Market Street, Suite 4"),
+        {"reply_contains": "Market Street"},
+    )
+    assert res.passed is True
+
+
+def test_reply_contains_still_fails_when_words_genuinely_absent():
+    res = score_run(
+        _record(final_reply="we are downtown"),
+        {"reply_contains": "Market Street"},
+    )
+    assert res.passed is False
+
+
+def test_reply_contains_still_case_insensitive():
+    res = score_run(
+        _record(final_reply="MARKET STREET is where we are"),
+        {"reply_contains": "market street"},
+    )
+    assert res.passed is True
+
+
 def test_llm_error_fails_immediately():
     res = score_run(_record(error="429 rate limit"), {"tools_called": ["book"]})
     assert res.passed is False

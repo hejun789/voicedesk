@@ -119,7 +119,8 @@
     "turns": [
       "I need to move my appointment.",
       "Jane Doe, 5551234.",
-      "Can we do 11am the same day instead?"
+      "Can we do 11am the same day instead?",
+      "Yes, please move it."
     ],
     "expect": {
       "tools_called": ["lookup_appt", "reschedule"],
@@ -131,7 +132,7 @@
     "id": "reschedule_other_day",
     "category": "reschedule",
     "seed": [{"patient_name": "John Smith", "phone": "5559876", "slot_iso": "2026-07-13T10:00", "reason": "filling"}],
-    "turns": ["Move my appointment to Tuesday July 14th 2026 at 9am. John Smith, 5559876."],
+    "turns": ["Move my appointment to Tuesday July 14th 2026 at 9am. John Smith, 5559876.", "Yes, please move it."],
     "expect": {
       "tools_called": ["lookup_appt", "reschedule"],
       "escalated": false,
@@ -153,7 +154,7 @@
     "id": "cancel_by_phone",
     "category": "cancel",
     "seed": [{"patient_name": "Jane Doe", "phone": "5551234", "slot_iso": "2026-07-13T09:00", "reason": "cleaning"}],
-    "turns": ["I need to cancel my appointment.", "Jane Doe, 5551234."],
+    "turns": ["I need to cancel my appointment.", "Jane Doe, 5551234.", "Yes, please cancel it."],
     "expect": {
       "tools_called": ["lookup_appt", "cancel"],
       "escalated": false,
@@ -164,7 +165,7 @@
     "id": "cancel_by_name",
     "category": "cancel",
     "seed": [{"patient_name": "Mary Lee", "phone": "5552222", "slot_iso": "2026-07-14T14:00", "reason": "checkup"}],
-    "turns": ["Please cancel the appointment for Mary Lee."],
+    "turns": ["Please cancel the appointment for Mary Lee.", "Yes, please cancel it."],
     "expect": {
       "tools_called": ["lookup_appt", "cancel"],
       "escalated": false,
@@ -174,7 +175,7 @@
   {
     "id": "cancel_no_appointment",
     "category": "cancel",
-    "turns": ["Cancel my appointment. Ghost Person, 5559999."],
+    "turns": ["Cancel my appointment. Ghost Person, 5559999.", "Yes, that's right."],
     "expect": {
       "tools_called": ["lookup_appt"],
       "tools_not_called": ["cancel"],

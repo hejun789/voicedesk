@@ -123,6 +123,11 @@ def test_build_system_prompt_mentions_already_booked_that_day_error():
     assert "already_booked_that_day" in prompt
 
 
+def test_build_system_prompt_requires_confirmation_before_cancel_or_reschedule():
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "Cancelling is destructive" in prompt
+
+
 def test_agent_default_system_prompt_has_current_year(db):
     agent = Agent(db, FakeLLM([]))
     assert str(date.today().year) in agent.messages[0]["content"]
