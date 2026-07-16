@@ -40,12 +40,13 @@ construction (a partial unique index over *booked* rows).
 ## Architecture
 
 ```
-CLI (text)  ──►  Agent core  ──►  Tool registry  ──►  Tools ──► SQLite calendar
-                (LLM loop)         (7 tools)                └──► clinic_info.md (FAQ retrieval)
-                     │
-                LLMClient protocol
-                     ├── GroqLLM   (production)
-                     └── FakeLLM   (tests — no network)
+Browser (mic + speech) ─┐
+                        ├─►  Agent core  ──►  Tool registry  ──►  Tools ──► SQLite calendar
+CLI (text) ─────────────┘   (LLM loop)         (7 tools)                └──► clinic_info.md (FAQ)
+                              │
+                         LLMClient protocol          Voice turn: POST /turn
+                              ├── GroqLLM (prod)      browser audio → Groq Whisper (STT)
+                              └── FakeLLM (tests)     → Agent.respond() → browser speaks reply
 ```
 
 Every boundary is deliberate:
@@ -53,10 +54,11 @@ Every boundary is deliberate:
 - **Tools know nothing about the LLM.** They're pure functions over a SQLite
   connection, so they're unit-testable with an in-memory database.
 - **The agent knows nothing about the provider.** It talks to an `LLMClient`
-  protocol, so the entire 154-test suite runs offline against a `FakeLLM` — no
+  protocol, so the entire **192-test** suite runs offline against a `FakeLLM` — no
   network, no API key, no cost.
-- **The agent knows nothing about audio**, which is what makes the planned voice
-  layer (STT/TTS) an additive change rather than a rewrite.
+- **The agent knows nothing about audio.** That's why the voice layer (Groq Whisper
+  in, browser speech-synthesis out) was an *additive* change that never touched the
+  agent core — the same `Agent.respond(text) -> str` the CLI and the eval harness call.
 
 ---
 
@@ -218,7 +220,7 @@ speaks the reply back. Each turn shows its latency breakdown (stt / agent / tota
 
 Use Chrome or Edge — it needs `MediaRecorder` and the Web Speech API.
 
-### Run the tests (178, fully offline — no API key needed)
+### Run the tests (192, fully offline — no API key needed)
 ```powershell
 $env:PYTHONPATH = "src"; python -m pytest -q
 ```
@@ -239,6 +241,8 @@ used. Set `GROQ_MODEL` in `.env` to compare models.
 
 - **Phase 1 — text agent** ✅ tool-calling loop, SQLite calendar, graceful escalation
 - **Phase 2 — eval harness** ✅ 30 scenarios, outcome scoring, flakiness + latency
-- **Phase 3 — voice** speech-to-text + text-to-speech over a WebSocket; the agent core
-  and the eval harness carry over unchanged, because neither knows about audio
+- **Phase 3 — voice** ✅ push-to-talk in the browser: Groq Whisper (STT) → the same
+  agent → browser speech-synthesis (TTS). One HTTP POST per turn — no WebSockets needed,
+  because the browser speaks the reply itself. The agent core and eval harness carry over
+  unchanged, because neither knows about audio. ~2s per turn end-to-end.
 - **Phase 4 — deploy** hosted demo, per-turn latency budget, cost per resolution
