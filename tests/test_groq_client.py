@@ -345,7 +345,10 @@ def test_complete_raises_quota_exhausted_for_long_wait_no_sleep(monkeypatch):
     sleeps = []
     monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
 
-    e = Exception("rate limit exceeded, please try again in 300s")
+    # 1000s exceeds QUOTA_EXHAUSTED_WAIT_S (900s) — a long-window quota, not a
+    # per-minute token bucket (raised from 300s: a per-minute bucket can now
+    # legitimately ask for waits up to ~900s and be honored, see below).
+    e = Exception("rate limit exceeded, please try again in 1000s")
     e.status_code = 429
     good = SimpleNamespace(choices=[_fake_choice(content="ok")])
     client = _FakeGroqClient([e, good])
@@ -354,7 +357,7 @@ def test_complete_raises_quota_exhausted_for_long_wait_no_sleep(monkeypatch):
         llm.complete([], [])
     assert sleeps == []
     assert client.calls == 1
-    assert "daily quota" in str(exc_info.value)
+    assert "long-window" in str(exc_info.value)
 
 
 def test_complete_still_retries_short_rate_limit_wait(monkeypatch):
@@ -376,6 +379,65 @@ def test_complete_still_retries_short_rate_limit_wait(monkeypatch):
 
 def test_quota_exhausted_is_subclass_of_llm_error():
     assert issubclass(QuotaExhausted, LLMError)
+
+
+# --- Fix: a depleted per-minute token bucket is not a spent daily quota ---
+
+def test_complete_waits_out_previously_fatal_137s_wait(monkeypatch):
+    """137s was fatal under the old 120s threshold, but this is exactly the
+    kind of wait a deeply depleted per-minute token bucket asks for — it
+    recovers, so we should wait it out and retry rather than aborting."""
+    import voicedesk.groq_client as gc
+
+    sleeps = []
+    monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
+
+    e = Exception("rate limit exceeded, please try again in 137s")
+    e.status_code = 429
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([e, good])
+    llm = GroqLLM(client=client, backoff_base=2.0)
+    msg = llm.complete([], [])
+    assert msg.content == "ok"
+    assert sleeps == [137.0]
+
+
+def test_complete_raises_quota_exhausted_when_remaining_requests_zero(monkeypatch):
+    """A spent long-window (daily) request budget cannot be waited out,
+    regardless of how short the Retry-After is."""
+    import voicedesk.groq_client as gc
+
+    sleeps = []
+    monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
+
+    e = Exception("rate limit exceeded, please try again in 5s")
+    e.status_code = 429
+    e.response = SimpleNamespace(headers={"x-ratelimit-remaining-requests": "0"})
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([e, good])
+    llm = GroqLLM(client=client, backoff_base=2.0)
+    with pytest.raises(QuotaExhausted):
+        llm.complete([], [])
+    assert sleeps == []
+    assert client.calls == 1
+
+
+def test_complete_raises_quota_exhausted_for_30_minute_wait(monkeypatch):
+    """A wait far beyond what a per-minute token bucket ever needs (30 min)
+    signals a genuine long-window quota, so it must still fail fast."""
+    import voicedesk.groq_client as gc
+
+    sleeps = []
+    monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
+
+    e = Exception("rate limit exceeded, please try again in 1800s")
+    e.status_code = 429
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([e, good])
+    llm = GroqLLM(client=client, backoff_base=2.0)
+    with pytest.raises(QuotaExhausted):
+        llm.complete([], [])
+    assert sleeps == []
 
 
 def test_default_tool_use_retry_budget_survives_five_malformed_calls():

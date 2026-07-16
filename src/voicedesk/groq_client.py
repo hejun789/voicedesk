@@ -5,10 +5,15 @@ import time
 from voicedesk.llm import Message, ToolCall, LLMError, QuotaExhausted
 
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
-MAX_BACKOFF_S = 300.0
+MAX_BACKOFF_S = 900.0
 TOKEN_HEADROOM = 3000  # roughly one agent call's worth of tokens
-QUOTA_EXHAUSTED_WAIT_S = 120.0  # a wait longer than this means a daily/long-window
-                                # quota, which will not clear by retrying
+# A per-minute token bucket can, when deeply depleted, legitimately ask for a
+# wait of a few minutes and WILL recover on its own — waiting it out is the
+# right move. Only a wait beyond ~15 minutes is implausible for a per-minute
+# bucket and instead indicates a long-window/daily quota, which retrying
+# cannot fix. (Also used to detect that condition alongside the remaining-
+# requests counter — see _remaining_requests.)
+QUOTA_EXHAUSTED_WAIT_S = 900.0
 
 _DURATION_RE = re.compile(r"(\d+(?:\.\d+)?)(ms|s|m|h)")
 
@@ -80,6 +85,24 @@ def _retry_after_seconds(exc: Exception) -> float | None:
         except ValueError:
             return None
     return None
+
+
+def _remaining_requests(exc: Exception) -> float | None:
+    """Requests left in the provider's long-window (daily) budget, from the
+    response headers. None when it did not say."""
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    if headers is None:
+        return None
+    try:
+        value = headers.get("x-ratelimit-remaining-requests")
+    except Exception:  # noqa: BLE001 - headers may not be dict-like
+        return None
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 class GroqLLM:
@@ -169,11 +192,22 @@ class GroqLLM:
                     rate_attempts += 1
                     self._update_limits(getattr(getattr(e, "response", None), "headers", None))
                     requested = _retry_after_seconds(e)
+                    remaining_reqs = _remaining_requests(e)
+                    # A spent long-window (daily) request budget cannot be waited out.
+                    if remaining_reqs is not None and remaining_reqs < 1:
+                        raise QuotaExhausted(
+                            f"Groq reports 0 requests remaining for {self.model!r} — "
+                            f"the daily request quota is spent. Retrying will not help; "
+                            f"try again later or switch GROQ_MODEL."
+                        ) from e
+                    # An implausibly long wait means a long-window limit, not the
+                    # per-minute token bucket (which recovers in seconds-to-minutes).
                     if requested is not None and requested > QUOTA_EXHAUSTED_WAIT_S:
                         raise QuotaExhausted(
-                            f"Groq asked for a {requested:.0f}s wait — the daily quota for "
-                            f"{self.model!r} is exhausted. Retrying will not help; try again later "
-                            f"or switch GROQ_MODEL."
+                            f"Groq asked for a {requested:.0f}s wait for {self.model!r} — "
+                            f"longer than a per-minute bucket ever needs, so a long-window "
+                            f"quota is spent. Retrying will not help; try again later or "
+                            f"switch GROQ_MODEL."
                         ) from e
                     wait = requested
                     if wait is None:
