@@ -440,6 +440,111 @@ def test_complete_raises_quota_exhausted_for_30_minute_wait(monkeypatch):
     assert sleeps == []
 
 
+# --- Fix: detect the per-day limit from what Groq actually says, not from
+# how long a wait it asks for (a depleted per-minute bucket can also ask for
+# minutes; only the provider's own wording reliably says "this is a daily
+# budget, waiting will not help"). ---
+
+def test_is_daily_limit_true_for_tpd_wording():
+    from voicedesk.groq_client import _is_daily_limit
+    e = Exception(
+        "Rate limit reached for model `openai/gpt-oss-120b` in organization "
+        "`org_x` service tier `on_demand` on tokens per day (TPD): Limit "
+        "200000, Used 200000, Requested 1208. Please try again in 8m41.856s."
+    )
+    assert _is_daily_limit(e) is True
+
+
+def test_is_daily_limit_true_for_rpd_wording():
+    from voicedesk.groq_client import _is_daily_limit
+    e = Exception("Rate limit reached ... on requests per day (RPD): Limit 1000, Used 1000.")
+    assert _is_daily_limit(e) is True
+
+
+def test_is_daily_limit_false_for_per_minute_wording():
+    from voicedesk.groq_client import _is_daily_limit
+    e = Exception(
+        "Rate limit reached ... on tokens per minute (TPM): Limit 8000, "
+        "Used 8000. Please try again in 5s."
+    )
+    assert _is_daily_limit(e) is False
+
+
+def test_is_daily_limit_false_for_generic_rate_limit_message():
+    from voicedesk.groq_client import _is_daily_limit
+    assert _is_daily_limit(Exception("rate limit exceeded")) is False
+
+
+def test_complete_raises_quota_exhausted_immediately_for_tpd_body(monkeypatch):
+    """Live evidence: Groq's TPD 429 asked for 'try again in 8m41.856s' (521s)
+    — short enough that the old duration-guess threshold would have slept it
+    off, forever, since the daily budget doesn't clear for hours. The body
+    itself says 'on tokens per day (TPD)', so that must be checked first."""
+    import voicedesk.groq_client as gc
+
+    sleeps = []
+    monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
+
+    e = Exception(
+        "Error code: 429 - {'error': {'message': 'Rate limit reached for model "
+        "`openai/gpt-oss-120b` in organization `org_x` service tier `on_demand` "
+        "on tokens per day (TPD): Limit 200000, Used 200000, Requested 1208. "
+        "Please try again in 8m41.856s.', 'type': 'tokens', "
+        "'code': 'rate_limit_exceeded'}}"
+    )
+    e.status_code = 429
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([e, good])
+    llm = GroqLLM(client=client, backoff_base=2.0)
+    with pytest.raises(QuotaExhausted) as exc_info:
+        llm.complete([], [])
+    assert sleeps == []
+    assert client.calls == 1
+    assert "per-day" in str(exc_info.value)
+
+
+def test_complete_raises_quota_exhausted_immediately_for_rpd_body(monkeypatch):
+    import voicedesk.groq_client as gc
+
+    sleeps = []
+    monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
+
+    e = Exception(
+        "Rate limit reached ... on requests per day (RPD): Limit 14400, "
+        "Used 14400. Please try again in 12s."
+    )
+    e.status_code = 429
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([e, good])
+    llm = GroqLLM(client=client, backoff_base=2.0)
+    with pytest.raises(QuotaExhausted):
+        llm.complete([], [])
+    assert sleeps == []
+    assert client.calls == 1
+
+
+def test_complete_still_waits_out_per_minute_tpm_limit(monkeypatch):
+    """Regression guard: a per-minute token bucket 429 must still be waited
+    out and retried, not treated as a daily-limit failure."""
+    import voicedesk.groq_client as gc
+
+    sleeps = []
+    monkeypatch.setattr(gc.time, "sleep", lambda s: sleeps.append(s))
+
+    e = Exception(
+        "Rate limit reached ... on tokens per minute (TPM): Limit 8000, "
+        "Used 8000. Please try again in 5s."
+    )
+    e.status_code = 429
+    good = SimpleNamespace(choices=[_fake_choice(content="ok")])
+    client = _FakeGroqClient([e, good])
+    llm = GroqLLM(client=client, backoff_base=2.0)
+    msg = llm.complete([], [])
+    assert msg.content == "ok"
+    assert sleeps == [5.0]
+    assert client.calls == 2
+
+
 def test_default_tool_use_retry_budget_survives_five_malformed_calls():
     """Groq's malformed-tool-call bug is flaky enough that two resamples is not
     enough — an exhausted budget makes the agent give up mid-call. The default

@@ -5,15 +5,17 @@ import time
 from voicedesk.llm import Message, ToolCall, LLMError, QuotaExhausted
 
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
-MAX_BACKOFF_S = 900.0
+MAX_BACKOFF_S = 180.0
 TOKEN_HEADROOM = 3000  # roughly one agent call's worth of tokens
-# A per-minute token bucket can, when deeply depleted, legitimately ask for a
-# wait of a few minutes and WILL recover on its own — waiting it out is the
-# right move. Only a wait beyond ~15 minutes is implausible for a per-minute
-# bucket and instead indicates a long-window/daily quota, which retrying
-# cannot fix. (Also used to detect that condition alongside the remaining-
-# requests counter — see _remaining_requests.)
-QUOTA_EXHAUSTED_WAIT_S = 900.0
+# These duration bounds are a backstop, not the primary signal: Groq tells us
+# in the 429 body which limit it enforced (see _is_daily_limit), and that is
+# checked first. A per-minute token bucket that asks for more than ~3 minutes
+# is not worth waiting out inside an eval that makes hundreds of calls — even
+# if it would eventually recover, burning 3+ minutes per call stalls the run
+# just as badly as a real daily-quota hang. So when _is_daily_limit can't
+# tell (message text we don't recognize), a wait this long is still treated
+# as futile and fails fast rather than grinding forever.
+QUOTA_EXHAUSTED_WAIT_S = 180.0
 
 _DURATION_RE = re.compile(r"(\d+(?:\.\d+)?)(ms|s|m|h)")
 
@@ -62,6 +64,18 @@ def _is_rate_limited(exc: Exception) -> bool:
         return True
     text = str(exc).lower()
     return "rate limit" in text or "429" in text
+
+
+# Groq names the limit it enforced in the 429 body, e.g. "on tokens per day (TPD)"
+# or "on requests per day (RPD)". A per-DAY limit will not clear by waiting, so it
+# must be detected from what the provider actually says — not guessed from how long
+# a wait it asks for (a depleted per-minute bucket can also ask for minutes).
+_PER_DAY_RE = re.compile(r"per day|\bTPD\b|\bRPD\b", re.IGNORECASE)
+
+
+def _is_daily_limit(exc: Exception) -> bool:
+    """True when the 429 says a per-DAY budget is spent. Retrying is futile."""
+    return bool(_PER_DAY_RE.search(str(exc)))
 
 
 def _retry_after_seconds(exc: Exception) -> float | None:
@@ -193,6 +207,14 @@ class GroqLLM:
                     self._update_limits(getattr(getattr(e, "response", None), "headers", None))
                     requested = _retry_after_seconds(e)
                     remaining_reqs = _remaining_requests(e)
+                    # Groq states the cause explicitly when it's a per-day budget —
+                    # check that before anything inferred from wait duration.
+                    if _is_daily_limit(e):
+                        raise QuotaExhausted(
+                            f"Groq's per-day budget for {self.model!r} is spent "
+                            f"({e}). Retrying will not help today; switch GROQ_MODEL "
+                            f"or try again tomorrow."
+                        ) from e
                     # A spent long-window (daily) request budget cannot be waited out.
                     if remaining_reqs is not None and remaining_reqs < 1:
                         raise QuotaExhausted(
