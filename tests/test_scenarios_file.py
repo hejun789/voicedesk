@@ -41,6 +41,12 @@ def test_every_english_scenario_has_a_chinese_mirror(scenarios):
         assert ("reply_contains" in s["expect"]) == ("reply_contains" in mirror["expect"]), s["id"]
         assert mirror.get("seed") == s.get("seed"), s["id"]
         assert mirror["category"] == s["category"], s["id"]
+        # A mirror with a different turn structure measures a different
+        # behaviour while still passing every other check: zh_changed_mind_mid_call
+        # once had a premature confirmation turn, so it booked and then had to
+        # reschedule -- a harder path than its English twin, which made the
+        # per-language comparison meaningless.
+        assert len(mirror["turns"]) == len(s["turns"]), s["id"]
 
 
 def test_chinese_scenarios_are_labelled_and_actually_chinese(scenarios):
