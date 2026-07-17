@@ -2,11 +2,22 @@
   {
     "id": "book_oneshot",
     "category": "booking",
-    "turns": ["Book me Monday July 13th 2026 at 9am. Jane Doe, 5551234, for a cleaning.", "Yes, that's right."],
+    "turns": [
+      "Book me Monday July 13th 2026 at 9am. Jane Doe, 5551234, for a cleaning.",
+      "Yes, that's right."
+    ],
     "expect": {
-      "tools_called": ["book"],
+      "tools_called": [
+        "book"
+      ],
       "escalated": false,
-      "appointments": [{"patient_name": "Jane Doe", "slot_iso": "2026-07-13T09:00", "status": "booked"}]
+      "appointments": [
+        {
+          "patient_name": "Jane Doe",
+          "slot_iso": "2026-07-13T09:00",
+          "status": "booked"
+        }
+      ]
     }
   },
   {
@@ -20,9 +31,17 @@
       "Yes, that's correct."
     ],
     "expect": {
-      "tools_called": ["book"],
+      "tools_called": [
+        "book"
+      ],
       "escalated": false,
-      "appointments": [{"patient_name": "John Smith", "slot_iso": "2026-07-13T10:00", "status": "booked"}]
+      "appointments": [
+        {
+          "patient_name": "John Smith",
+          "slot_iso": "2026-07-13T10:00",
+          "status": "booked"
+        }
+      ]
     }
   },
   {
@@ -34,48 +53,93 @@
       "Yes, that's correct."
     ],
     "expect": {
-      "tools_called": ["find_slots", "book"],
+      "tools_called": [
+        "find_slots",
+        "book"
+      ],
       "escalated": false,
-      "appointments": [{"patient_name": "Mary Lee", "slot_iso": "2026-07-14T14:00", "status": "booked"}]
+      "appointments": [
+        {
+          "patient_name": "Mary Lee",
+          "slot_iso": "2026-07-14T14:00",
+          "status": "booked"
+        }
+      ]
     }
   },
   {
     "id": "book_afternoon_slot",
     "category": "booking",
-    "turns": ["I need an appointment Wednesday July 15th 2026 at 3pm. Tom Ray, 5553333, for a crown.", "Yes, that's right."],
+    "turns": [
+      "I need an appointment Wednesday July 15th 2026 at 3pm. Tom Ray, 5553333, for a crown.",
+      "Yes, that's right."
+    ],
     "expect": {
-      "tools_called": ["book"],
+      "tools_called": [
+        "book"
+      ],
       "escalated": false,
-      "appointments": [{"patient_name": "Tom Ray", "slot_iso": "2026-07-15T15:00", "status": "booked"}]
+      "appointments": [
+        {
+          "patient_name": "Tom Ray",
+          "slot_iso": "2026-07-15T15:00",
+          "status": "booked"
+        }
+      ]
     }
   },
   {
     "id": "book_earliest_available",
     "category": "booking",
-    "turns": ["Book me the earliest slot you have on Thursday July 16th 2026. Anna Kim, 5554444, cleaning.", "Yes, that's right."],
+    "turns": [
+      "Book me the earliest slot you have on Thursday July 16th 2026. Anna Kim, 5554444, cleaning.",
+      "Yes, that's right."
+    ],
     "expect": {
-      "tools_called": ["book"],
+      "tools_called": [
+        "book"
+      ],
       "escalated": false,
-      "appointments": [{"patient_name": "Anna Kim", "slot_iso": "2026-07-16T09:00", "status": "booked"}]
+      "appointments": [
+        {
+          "patient_name": "Anna Kim",
+          "slot_iso": "2026-07-16T09:00",
+          "status": "booked"
+        }
+      ]
     }
   },
   {
     "id": "book_last_slot_of_day",
     "category": "booking",
-    "turns": ["Friday July 17th 2026 at 4pm please. Sam Poe, 5555555, teeth whitening.", "Yes, that's right."],
+    "turns": [
+      "Friday July 17th 2026 at 4pm please. Sam Poe, 5555555, teeth whitening.",
+      "Yes, that's right."
+    ],
     "expect": {
-      "tools_called": ["book"],
+      "tools_called": [
+        "book"
+      ],
       "escalated": false,
-      "appointments": [{"patient_name": "Sam Poe", "slot_iso": "2026-07-17T16:00", "status": "booked"}]
+      "appointments": [
+        {
+          "patient_name": "Sam Poe",
+          "slot_iso": "2026-07-17T16:00",
+          "status": "booked"
+        }
+      ]
     }
   },
-
   {
     "id": "faq_hours",
     "category": "faq",
-    "turns": ["What are your opening hours?"],
+    "turns": [
+      "What are your opening hours?"
+    ],
     "expect": {
-      "tools_called": ["answer_faq"],
+      "tools_called": [
+        "answer_faq"
+      ],
       "escalated": false,
       "appointment_count": 0,
       "reply_contains": "Friday"
@@ -84,9 +148,13 @@
   {
     "id": "faq_location",
     "category": "faq",
-    "turns": ["Where are you located?"],
+    "turns": [
+      "Where are you located?"
+    ],
     "expect": {
-      "tools_called": ["answer_faq"],
+      "tools_called": [
+        "answer_faq"
+      ],
       "escalated": false,
       "reply_contains": "Market Street"
     }
@@ -94,9 +162,13 @@
   {
     "id": "faq_insurance",
     "category": "faq",
-    "turns": ["Do you accept Cigna insurance?"],
+    "turns": [
+      "Do you accept Cigna insurance?"
+    ],
     "expect": {
-      "tools_called": ["answer_faq"],
+      "tools_called": [
+        "answer_faq"
+      ],
       "escalated": false,
       "reply_contains": "Cigna"
     }
@@ -104,18 +176,28 @@
   {
     "id": "faq_services",
     "category": "faq",
-    "turns": ["Do you do teeth whitening?"],
+    "turns": [
+      "Do you do teeth whitening?"
+    ],
     "expect": {
-      "tools_called": ["answer_faq"],
+      "tools_called": [
+        "answer_faq"
+      ],
       "escalated": false,
       "reply_contains": "whitening"
     }
   },
-
   {
     "id": "reschedule_same_day",
     "category": "reschedule",
-    "seed": [{"patient_name": "Jane Doe", "phone": "5551234", "slot_iso": "2026-07-13T09:00", "reason": "cleaning"}],
+    "seed": [
+      {
+        "patient_name": "Jane Doe",
+        "phone": "5551234",
+        "slot_iso": "2026-07-13T09:00",
+        "reason": "cleaning"
+      }
+    ],
     "turns": [
       "I need to move my appointment.",
       "Jane Doe, 5551234.",
@@ -123,105 +205,236 @@
       "Yes, please move it."
     ],
     "expect": {
-      "tools_called": ["lookup_appt", "reschedule"],
+      "tools_called": [
+        "lookup_appt",
+        "reschedule"
+      ],
       "escalated": false,
-      "appointments": [{"patient_name": "Jane Doe", "slot_iso": "2026-07-13T11:00", "status": "booked"}]
+      "appointments": [
+        {
+          "patient_name": "Jane Doe",
+          "slot_iso": "2026-07-13T11:00",
+          "status": "booked"
+        }
+      ]
     }
   },
   {
     "id": "reschedule_other_day",
     "category": "reschedule",
-    "seed": [{"patient_name": "John Smith", "phone": "5559876", "slot_iso": "2026-07-13T10:00", "reason": "filling"}],
-    "turns": ["Move my appointment to Tuesday July 14th 2026 at 9am. John Smith, 5559876.", "Yes, please move it."],
+    "seed": [
+      {
+        "patient_name": "John Smith",
+        "phone": "5559876",
+        "slot_iso": "2026-07-13T10:00",
+        "reason": "filling"
+      }
+    ],
+    "turns": [
+      "Move my appointment to Tuesday July 14th 2026 at 9am. John Smith, 5559876.",
+      "Yes, please move it."
+    ],
     "expect": {
-      "tools_called": ["lookup_appt", "reschedule"],
+      "tools_called": [
+        "lookup_appt",
+        "reschedule"
+      ],
       "escalated": false,
-      "appointments": [{"patient_name": "John Smith", "slot_iso": "2026-07-14T09:00", "status": "booked"}]
+      "appointments": [
+        {
+          "patient_name": "John Smith",
+          "slot_iso": "2026-07-14T09:00",
+          "status": "booked"
+        }
+      ]
     }
   },
   {
     "id": "reschedule_no_appointment",
     "category": "reschedule",
-    "turns": ["I want to reschedule my appointment. Bob Nobody, 5550000."],
+    "turns": [
+      "I want to reschedule my appointment. Bob Nobody, 5550000."
+    ],
     "expect": {
-      "tools_called": ["lookup_appt"],
-      "tools_not_called": ["reschedule", "book"],
+      "tools_called": [
+        "lookup_appt"
+      ],
+      "tools_not_called": [
+        "reschedule",
+        "book"
+      ],
       "appointment_count": 0
     }
   },
-
   {
     "id": "cancel_by_phone",
     "category": "cancel",
-    "seed": [{"patient_name": "Jane Doe", "phone": "5551234", "slot_iso": "2026-07-13T09:00", "reason": "cleaning"}],
-    "turns": ["I need to cancel my appointment.", "Jane Doe, 5551234.", "Yes, please cancel it."],
+    "seed": [
+      {
+        "patient_name": "Jane Doe",
+        "phone": "5551234",
+        "slot_iso": "2026-07-13T09:00",
+        "reason": "cleaning"
+      }
+    ],
+    "turns": [
+      "I need to cancel my appointment.",
+      "Jane Doe, 5551234.",
+      "Yes, please cancel it."
+    ],
     "expect": {
-      "tools_called": ["lookup_appt", "cancel"],
+      "tools_called": [
+        "lookup_appt",
+        "cancel"
+      ],
       "escalated": false,
-      "appointments": [{"patient_name": "Jane Doe", "slot_iso": "2026-07-13T09:00", "status": "cancelled"}]
+      "appointments": [
+        {
+          "patient_name": "Jane Doe",
+          "slot_iso": "2026-07-13T09:00",
+          "status": "cancelled"
+        }
+      ]
     }
   },
   {
     "id": "cancel_by_name",
     "category": "cancel",
-    "seed": [{"patient_name": "Mary Lee", "phone": "5552222", "slot_iso": "2026-07-14T14:00", "reason": "checkup"}],
-    "turns": ["Please cancel the appointment for Mary Lee.", "Yes, please cancel it."],
+    "seed": [
+      {
+        "patient_name": "Mary Lee",
+        "phone": "5552222",
+        "slot_iso": "2026-07-14T14:00",
+        "reason": "checkup"
+      }
+    ],
+    "turns": [
+      "Please cancel the appointment for Mary Lee.",
+      "Yes, please cancel it."
+    ],
     "expect": {
-      "tools_called": ["lookup_appt", "cancel"],
+      "tools_called": [
+        "lookup_appt",
+        "cancel"
+      ],
       "escalated": false,
-      "appointments": [{"patient_name": "Mary Lee", "slot_iso": "2026-07-14T14:00", "status": "cancelled"}]
+      "appointments": [
+        {
+          "patient_name": "Mary Lee",
+          "slot_iso": "2026-07-14T14:00",
+          "status": "cancelled"
+        }
+      ]
     }
   },
   {
     "id": "cancel_no_appointment",
     "category": "cancel",
-    "turns": ["Cancel my appointment. Ghost Person, 5559999.", "Yes, that's right."],
+    "turns": [
+      "Cancel my appointment. Ghost Person, 5559999.",
+      "Yes, that's right."
+    ],
     "expect": {
-      "tools_called": ["lookup_appt"],
-      "tools_not_called": ["cancel"],
+      "tools_called": [
+        "lookup_appt"
+      ],
+      "tools_not_called": [
+        "cancel"
+      ],
       "appointment_count": 0
     }
   },
-
   {
     "id": "lookup_by_phone",
     "category": "lookup",
-    "seed": [{"patient_name": "Jane Doe", "phone": "5551234", "slot_iso": "2026-07-13T09:00", "reason": "cleaning"}],
-    "turns": ["What appointments do I have? My number is 5551234."],
+    "seed": [
+      {
+        "patient_name": "Jane Doe",
+        "phone": "5551234",
+        "slot_iso": "2026-07-13T09:00",
+        "reason": "cleaning"
+      }
+    ],
+    "turns": [
+      "What appointments do I have? My number is 5551234."
+    ],
     "expect": {
-      "tools_called": ["lookup_appt"],
-      "tools_not_called": ["book", "cancel", "reschedule"],
+      "tools_called": [
+        "lookup_appt"
+      ],
+      "tools_not_called": [
+        "book",
+        "cancel",
+        "reschedule"
+      ],
       "escalated": false,
-      "appointments": [{"patient_name": "Jane Doe", "slot_iso": "2026-07-13T09:00", "status": "booked"}]
+      "appointments": [
+        {
+          "patient_name": "Jane Doe",
+          "slot_iso": "2026-07-13T09:00",
+          "status": "booked"
+        }
+      ]
     }
   },
   {
     "id": "lookup_by_name",
     "category": "lookup",
-    "seed": [{"patient_name": "Tom Ray", "phone": "5553333", "slot_iso": "2026-07-15T15:00", "reason": "crown"}],
-    "turns": ["Do I have anything booked? It's Tom Ray."],
+    "seed": [
+      {
+        "patient_name": "Tom Ray",
+        "phone": "5553333",
+        "slot_iso": "2026-07-15T15:00",
+        "reason": "crown"
+      }
+    ],
+    "turns": [
+      "Do I have anything booked? It's Tom Ray."
+    ],
     "expect": {
-      "tools_called": ["lookup_appt"],
-      "tools_not_called": ["book", "cancel", "reschedule"],
+      "tools_called": [
+        "lookup_appt"
+      ],
+      "tools_not_called": [
+        "book",
+        "cancel",
+        "reschedule"
+      ],
       "escalated": false
     }
   },
-
   {
     "id": "book_taken_slot",
     "category": "unavailable",
-    "seed": [{"patient_name": "Jane Doe", "phone": "5551234", "slot_iso": "2026-07-13T09:00", "reason": "cleaning"}],
-    "turns": ["Book me Monday July 13th 2026 at 9am. Carl New, 5556666, for a cleaning."],
+    "seed": [
+      {
+        "patient_name": "Jane Doe",
+        "phone": "5551234",
+        "slot_iso": "2026-07-13T09:00",
+        "reason": "cleaning"
+      }
+    ],
+    "turns": [
+      "Book me Monday July 13th 2026 at 9am. Carl New, 5556666, for a cleaning."
+    ],
     "expect": {
       "escalated": false,
-      "appointments": [{"patient_name": "Jane Doe", "slot_iso": "2026-07-13T09:00", "status": "booked"}],
+      "appointments": [
+        {
+          "patient_name": "Jane Doe",
+          "slot_iso": "2026-07-13T09:00",
+          "status": "booked"
+        }
+      ],
       "appointment_count": 1
     }
   },
   {
     "id": "book_saturday_rejected",
     "category": "unavailable",
-    "turns": ["Book me Saturday July 18th 2026 at 10am. Rita Sun, 5557777, for a cleaning."],
+    "turns": [
+      "Book me Saturday July 18th 2026 at 10am. Rita Sun, 5557777, for a cleaning."
+    ],
     "expect": {
       "appointment_count": 0
     }
@@ -229,7 +442,9 @@
   {
     "id": "book_outside_hours_rejected",
     "category": "unavailable",
-    "turns": ["Book me Monday July 13th 2026 at 8pm. Neil Late, 5558888, for a cleaning."],
+    "turns": [
+      "Book me Monday July 13th 2026 at 8pm. Neil Late, 5558888, for a cleaning."
+    ],
     "expect": {
       "appointment_count": 0
     }
@@ -237,18 +452,23 @@
   {
     "id": "book_sunday_rejected",
     "category": "unavailable",
-    "turns": ["Can I come in on Sunday July 19th 2026 at noon? Paul Rest, 5551111, checkup."],
+    "turns": [
+      "Can I come in on Sunday July 19th 2026 at noon? Paul Rest, 5551111, checkup."
+    ],
     "expect": {
       "appointment_count": 0
     }
   },
-
   {
     "id": "escalate_medical_advice",
     "category": "escalation",
-    "turns": ["My tooth is bleeding a lot. What medication should I take right now?"],
+    "turns": [
+      "My tooth is bleeding a lot. What medication should I take right now?"
+    ],
     "expect": {
-      "tools_called": ["escalate"],
+      "tools_called": [
+        "escalate"
+      ],
       "escalated": true,
       "appointment_count": 0
     }
@@ -256,9 +476,13 @@
   {
     "id": "escalate_gibberish",
     "category": "escalation",
-    "turns": ["asdkjh qwe zxcv 12345 ??? mnbv"],
+    "turns": [
+      "asdkjh qwe zxcv 12345 ??? mnbv"
+    ],
     "expect": {
-      "tools_called": ["escalate"],
+      "tools_called": [
+        "escalate"
+      ],
       "escalated": true,
       "appointment_count": 0
     }
@@ -266,7 +490,9 @@
   {
     "id": "escalate_out_of_scope",
     "category": "escalation",
-    "turns": ["Can you tell me what my insurance policy number is?"],
+    "turns": [
+      "Can you tell me what my insurance policy number is?"
+    ],
     "expect": {
       "escalated": true,
       "appointment_count": 0
@@ -275,7 +501,9 @@
   {
     "id": "escalate_billing_dispute",
     "category": "escalation",
-    "turns": ["I was charged twice for my last visit and I want a refund immediately."],
+    "turns": [
+      "I was charged twice for my last visit and I want a refund immediately."
+    ],
     "expect": {
       "escalated": true,
       "appointment_count": 0
@@ -284,28 +512,38 @@
   {
     "id": "escalate_medical_emergency",
     "category": "escalation",
-    "turns": ["I think I'm having an allergic reaction to the anesthetic from yesterday."],
+    "turns": [
+      "I think I'm having an allergic reaction to the anesthetic from yesterday."
+    ],
     "expect": {
       "escalated": true,
       "appointment_count": 0
     }
   },
-
   {
     "id": "ambiguous_then_abandons",
     "category": "ambiguous",
-    "turns": ["I want to book an appointment.", "Actually, never mind. Bye."],
+    "turns": [
+      "I want to book an appointment.",
+      "Actually, never mind. Bye."
+    ],
     "expect": {
-      "tools_not_called": ["book"],
+      "tools_not_called": [
+        "book"
+      ],
       "appointment_count": 0
     }
   },
   {
     "id": "ambiguous_vague_time",
     "category": "ambiguous",
-    "turns": ["I want to come in sometime next week."],
+    "turns": [
+      "I want to come in sometime next week."
+    ],
     "expect": {
-      "tools_not_called": ["book"],
+      "tools_not_called": [
+        "book"
+      ],
       "appointment_count": 0
     }
   },
@@ -319,8 +557,613 @@
     ],
     "expect": {
       "escalated": false,
-      "appointments": [{"patient_name": "Jane Doe", "slot_iso": "2026-07-13T11:00", "status": "booked"}],
+      "appointments": [
+        {
+          "patient_name": "Jane Doe",
+          "slot_iso": "2026-07-13T11:00",
+          "status": "booked"
+        }
+      ],
       "appointment_count": 1
     }
+  },
+  {
+    "id": "zh_book_oneshot",
+    "category": "booking",
+    "turns": [
+      "帮我预约2026年7月13日星期一早上9点，我叫Jane Doe，电话5551234，洗牙。",
+      "对，没错。"
+    ],
+    "expect": {
+      "tools_called": [
+        "book"
+      ],
+      "escalated": false,
+      "appointments": [
+        {
+          "patient_name": "Jane Doe",
+          "slot_iso": "2026-07-13T09:00",
+          "status": "booked"
+        }
+      ]
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_book_multi_turn",
+    "category": "booking",
+    "turns": [
+      "你好，我想预约看牙。",
+      "2026年7月13日星期一早上10点可以吗？",
+      "我叫John Smith，电话5559876。",
+      "补牙。",
+      "对，没错。"
+    ],
+    "expect": {
+      "tools_called": [
+        "book"
+      ],
+      "escalated": false,
+      "appointments": [
+        {
+          "patient_name": "John Smith",
+          "slot_iso": "2026-07-13T10:00",
+          "status": "booked"
+        }
+      ]
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_book_after_checking_availability",
+    "category": "booking",
+    "turns": [
+      "2026年7月14日星期二你们还有哪些时间？",
+      "那就下午2点吧。我叫Mary Lee，电话5552222，做检查。",
+      "对，没错。"
+    ],
+    "expect": {
+      "tools_called": [
+        "find_slots",
+        "book"
+      ],
+      "escalated": false,
+      "appointments": [
+        {
+          "patient_name": "Mary Lee",
+          "slot_iso": "2026-07-14T14:00",
+          "status": "booked"
+        }
+      ]
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_book_afternoon_slot",
+    "category": "booking",
+    "turns": [
+      "我要预约2026年7月15日星期三下午3点，我叫Tom Ray，电话5553333，做牙冠。",
+      "对，没错。"
+    ],
+    "expect": {
+      "tools_called": [
+        "book"
+      ],
+      "escalated": false,
+      "appointments": [
+        {
+          "patient_name": "Tom Ray",
+          "slot_iso": "2026-07-15T15:00",
+          "status": "booked"
+        }
+      ]
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_book_earliest_available",
+    "category": "booking",
+    "turns": [
+      "帮我约2026年7月16日星期四最早的时间，我叫Anna Kim，电话5554444，洗牙。",
+      "对，没错。"
+    ],
+    "expect": {
+      "tools_called": [
+        "book"
+      ],
+      "escalated": false,
+      "appointments": [
+        {
+          "patient_name": "Anna Kim",
+          "slot_iso": "2026-07-16T09:00",
+          "status": "booked"
+        }
+      ]
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_book_last_slot_of_day",
+    "category": "booking",
+    "turns": [
+      "2026年7月17日星期五下午4点，我叫Sam Poe，电话5555555，牙齿美白。",
+      "对，没错。"
+    ],
+    "expect": {
+      "tools_called": [
+        "book"
+      ],
+      "escalated": false,
+      "appointments": [
+        {
+          "patient_name": "Sam Poe",
+          "slot_iso": "2026-07-17T16:00",
+          "status": "booked"
+        }
+      ]
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_faq_hours",
+    "category": "faq",
+    "turns": [
+      "你们的营业时间是什么时候？"
+    ],
+    "expect": {
+      "tools_called": [
+        "answer_faq"
+      ],
+      "escalated": false,
+      "appointment_count": 0,
+      "reply_contains": "Friday"
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_faq_location",
+    "category": "faq",
+    "turns": [
+      "你们诊所在哪里？"
+    ],
+    "expect": {
+      "tools_called": [
+        "answer_faq"
+      ],
+      "escalated": false,
+      "reply_contains": "Market Street"
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_faq_insurance",
+    "category": "faq",
+    "turns": [
+      "你们接受Cigna保险吗？"
+    ],
+    "expect": {
+      "tools_called": [
+        "answer_faq"
+      ],
+      "escalated": false,
+      "reply_contains": "Cigna"
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_faq_services",
+    "category": "faq",
+    "turns": [
+      "你们做牙齿美白吗？"
+    ],
+    "expect": {
+      "tools_called": [
+        "answer_faq"
+      ],
+      "escalated": false,
+      "reply_contains": "whitening"
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_reschedule_same_day",
+    "category": "reschedule",
+    "seed": [
+      {
+        "patient_name": "Jane Doe",
+        "phone": "5551234",
+        "slot_iso": "2026-07-13T09:00",
+        "reason": "cleaning"
+      }
+    ],
+    "turns": [
+      "我想改一下我的预约时间。",
+      "我叫Jane Doe，电话5551234。",
+      "能不能改成同一天上午11点？",
+      "对，麻烦改一下。"
+    ],
+    "expect": {
+      "tools_called": [
+        "lookup_appt",
+        "reschedule"
+      ],
+      "escalated": false,
+      "appointments": [
+        {
+          "patient_name": "Jane Doe",
+          "slot_iso": "2026-07-13T11:00",
+          "status": "booked"
+        }
+      ]
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_reschedule_other_day",
+    "category": "reschedule",
+    "seed": [
+      {
+        "patient_name": "John Smith",
+        "phone": "5559876",
+        "slot_iso": "2026-07-13T10:00",
+        "reason": "filling"
+      }
+    ],
+    "turns": [
+      "把我的预约改到2026年7月14日星期二早上9点。我叫John Smith，电话5559876。",
+      "对，麻烦改一下。"
+    ],
+    "expect": {
+      "tools_called": [
+        "lookup_appt",
+        "reschedule"
+      ],
+      "escalated": false,
+      "appointments": [
+        {
+          "patient_name": "John Smith",
+          "slot_iso": "2026-07-14T09:00",
+          "status": "booked"
+        }
+      ]
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_reschedule_no_appointment",
+    "category": "reschedule",
+    "turns": [
+      "我想改一下我的预约。我叫Bob Nobody，电话5550000。"
+    ],
+    "expect": {
+      "tools_called": [
+        "lookup_appt"
+      ],
+      "tools_not_called": [
+        "reschedule",
+        "book"
+      ],
+      "appointment_count": 0
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_cancel_by_phone",
+    "category": "cancel",
+    "seed": [
+      {
+        "patient_name": "Jane Doe",
+        "phone": "5551234",
+        "slot_iso": "2026-07-13T09:00",
+        "reason": "cleaning"
+      }
+    ],
+    "turns": [
+      "我要取消我的预约。",
+      "我叫Jane Doe，电话5551234。",
+      "对，麻烦取消。"
+    ],
+    "expect": {
+      "tools_called": [
+        "lookup_appt",
+        "cancel"
+      ],
+      "escalated": false,
+      "appointments": [
+        {
+          "patient_name": "Jane Doe",
+          "slot_iso": "2026-07-13T09:00",
+          "status": "cancelled"
+        }
+      ]
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_cancel_by_name",
+    "category": "cancel",
+    "seed": [
+      {
+        "patient_name": "Mary Lee",
+        "phone": "5552222",
+        "slot_iso": "2026-07-14T14:00",
+        "reason": "checkup"
+      }
+    ],
+    "turns": [
+      "麻烦帮Mary Lee取消预约。",
+      "对，麻烦取消。"
+    ],
+    "expect": {
+      "tools_called": [
+        "lookup_appt",
+        "cancel"
+      ],
+      "escalated": false,
+      "appointments": [
+        {
+          "patient_name": "Mary Lee",
+          "slot_iso": "2026-07-14T14:00",
+          "status": "cancelled"
+        }
+      ]
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_cancel_no_appointment",
+    "category": "cancel",
+    "turns": [
+      "取消我的预约。我叫Ghost Person，电话5559999。",
+      "对，没错。"
+    ],
+    "expect": {
+      "tools_called": [
+        "lookup_appt"
+      ],
+      "tools_not_called": [
+        "cancel"
+      ],
+      "appointment_count": 0
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_lookup_by_phone",
+    "category": "lookup",
+    "seed": [
+      {
+        "patient_name": "Jane Doe",
+        "phone": "5551234",
+        "slot_iso": "2026-07-13T09:00",
+        "reason": "cleaning"
+      }
+    ],
+    "turns": [
+      "我有预约吗？我的电话是5551234。"
+    ],
+    "expect": {
+      "tools_called": [
+        "lookup_appt"
+      ],
+      "tools_not_called": [
+        "book",
+        "cancel",
+        "reschedule"
+      ],
+      "escalated": false,
+      "appointments": [
+        {
+          "patient_name": "Jane Doe",
+          "slot_iso": "2026-07-13T09:00",
+          "status": "booked"
+        }
+      ]
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_lookup_by_name",
+    "category": "lookup",
+    "seed": [
+      {
+        "patient_name": "Tom Ray",
+        "phone": "5553333",
+        "slot_iso": "2026-07-15T15:00",
+        "reason": "crown"
+      }
+    ],
+    "turns": [
+      "我有没有预约？我叫Tom Ray。"
+    ],
+    "expect": {
+      "tools_called": [
+        "lookup_appt"
+      ],
+      "tools_not_called": [
+        "book",
+        "cancel",
+        "reschedule"
+      ],
+      "escalated": false
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_book_taken_slot",
+    "category": "unavailable",
+    "seed": [
+      {
+        "patient_name": "Jane Doe",
+        "phone": "5551234",
+        "slot_iso": "2026-07-13T09:00",
+        "reason": "cleaning"
+      }
+    ],
+    "turns": [
+      "帮我约2026年7月13日星期一早上9点。我叫Carl New，电话5556666，洗牙。"
+    ],
+    "expect": {
+      "escalated": false,
+      "appointments": [
+        {
+          "patient_name": "Jane Doe",
+          "slot_iso": "2026-07-13T09:00",
+          "status": "booked"
+        }
+      ],
+      "appointment_count": 1
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_book_saturday_rejected",
+    "category": "unavailable",
+    "turns": [
+      "帮我约2026年7月18日星期六早上10点。我叫Rita Sun，电话5557777，洗牙。"
+    ],
+    "expect": {
+      "appointment_count": 0
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_book_outside_hours_rejected",
+    "category": "unavailable",
+    "turns": [
+      "帮我约2026年7月13日星期一晚上8点。我叫Neil Late，电话5558888，洗牙。"
+    ],
+    "expect": {
+      "appointment_count": 0
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_book_sunday_rejected",
+    "category": "unavailable",
+    "turns": [
+      "2026年7月19日星期天中午可以来吗？我叫Paul Rest，电话5551111，做检查。"
+    ],
+    "expect": {
+      "appointment_count": 0
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_escalate_medical_advice",
+    "category": "escalation",
+    "turns": [
+      "我的牙齿流血很厉害，现在应该吃什么药？"
+    ],
+    "expect": {
+      "tools_called": [
+        "escalate"
+      ],
+      "escalated": true,
+      "appointment_count": 0
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_escalate_gibberish",
+    "category": "escalation",
+    "turns": [
+      "啊啊啊 哦哦 呃呃呃 12345 ？？？ 嘟嘟嘟"
+    ],
+    "expect": {
+      "tools_called": [
+        "escalate"
+      ],
+      "escalated": true,
+      "appointment_count": 0
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_escalate_out_of_scope",
+    "category": "escalation",
+    "turns": [
+      "你能告诉我我的保险单号是多少吗？"
+    ],
+    "expect": {
+      "escalated": true,
+      "appointment_count": 0
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_escalate_billing_dispute",
+    "category": "escalation",
+    "turns": [
+      "我上次看诊被重复扣款了，我要马上退款。"
+    ],
+    "expect": {
+      "escalated": true,
+      "appointment_count": 0
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_escalate_medical_emergency",
+    "category": "escalation",
+    "turns": [
+      "我昨天打的麻药好像过敏了，现在很不舒服。"
+    ],
+    "expect": {
+      "escalated": true,
+      "appointment_count": 0
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_ambiguous_then_abandons",
+    "category": "ambiguous",
+    "turns": [
+      "我想预约。",
+      "算了，不用了，再见。"
+    ],
+    "expect": {
+      "tools_not_called": [
+        "book"
+      ],
+      "appointment_count": 0
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_ambiguous_vague_time",
+    "category": "ambiguous",
+    "turns": [
+      "我下周想找个时间过去。"
+    ],
+    "expect": {
+      "tools_not_called": [
+        "book"
+      ],
+      "appointment_count": 0
+    },
+    "lang": "zh"
+  },
+  {
+    "id": "zh_changed_mind_mid_call",
+    "category": "ambiguous",
+    "turns": [
+      "帮我约2026年7月13日星期一早上9点。我叫Jane Doe，电话5551234，洗牙。",
+      "对，没错。",
+      "等一下，能改成11点吗？",
+      "对，麻烦改一下。"
+    ],
+    "expect": {
+      "escalated": false,
+      "appointments": [
+        {
+          "patient_name": "Jane Doe",
+          "slot_iso": "2026-07-13T11:00",
+          "status": "booked"
+        }
+      ],
+      "appointment_count": 1
+    },
+    "lang": "zh"
   }
 ]

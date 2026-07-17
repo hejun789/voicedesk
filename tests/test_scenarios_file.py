@@ -20,6 +20,34 @@ def test_has_about_thirty_scenarios(scenarios):
     assert len(scenarios) >= 30
 
 
+def test_has_sixty_scenarios(scenarios):
+    assert len(scenarios) == 60
+
+
+def test_every_english_scenario_has_a_chinese_mirror(scenarios):
+    by_id = {s["id"]: s for s in scenarios}
+    english = [s for s in scenarios if s.get("lang", "en") == "en"]
+    assert len(english) == 30
+    for s in english:
+        mirror = by_id.get(f"zh_{s['id']}")
+        assert mirror is not None, f"no Chinese mirror for {s['id']}"
+        # The comparison is only meaningful if the expectations are identical.
+        assert mirror["expect"] == s["expect"], s["id"]
+        assert mirror.get("seed") == s.get("seed"), s["id"]
+        assert mirror["category"] == s["category"], s["id"]
+
+
+def test_chinese_scenarios_are_labelled_and_actually_chinese(scenarios):
+    zh = [s for s in scenarios if s["id"].startswith("zh_")]
+    assert len(zh) == 30
+    for s in zh:
+        assert s["lang"] == "zh", s["id"]
+        # Every turn must contain CJK characters — a turn left in English would
+        # silently measure the wrong thing.
+        for turn in s["turns"]:
+            assert any("一" <= ch <= "鿿" for ch in turn), s["id"]
+
+
 def test_ids_are_unique(scenarios):
     ids = [s["id"] for s in scenarios]
     assert len(ids) == len(set(ids))
