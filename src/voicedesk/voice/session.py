@@ -1,5 +1,7 @@
 import time
 
+from voicedesk.lang import DEFAULT_LANG, normalize_lang
+
 DEFAULT_TTL_S = 1800  # 30 minutes
 
 
@@ -9,8 +11,8 @@ class SessionStore:
     give their name on the next). Idle sessions expire so the map cannot grow
     without bound.
 
-    `agent_factory` is a zero-arg callable returning a fresh Agent. `clock` is
-    injectable so expiry can be tested without sleeping.
+    `agent_factory` is a one-arg callable (lang) returning a fresh Agent.
+    `clock` is injectable so expiry can be tested without sleeping.
     """
 
     def __init__(self, agent_factory, ttl_s: float = DEFAULT_TTL_S,
@@ -18,17 +20,21 @@ class SessionStore:
         self._agent_factory = agent_factory
         self._ttl_s = ttl_s
         self._clock = clock
-        self._sessions: dict[str, tuple] = {}  # id -> (agent, last_used_at)
+        self._sessions: dict[tuple, tuple] = {}  # (id, lang) -> (agent, last_used_at)
 
-    def get_or_create(self, session_id: str):
+    def get_or_create(self, session_id: str, lang: str = DEFAULT_LANG):
+        """The caller's Agent for this language. A language switch is a new
+        context, so it gets its own conversation rather than a mixed history."""
         self._expire()
         now = self._clock()
-        entry = self._sessions.get(session_id)
+        lang = normalize_lang(lang)
+        key = (session_id, lang)
+        entry = self._sessions.get(key)
         if entry is None:
-            agent = self._agent_factory()
+            agent = self._agent_factory(lang)
         else:
             agent = entry[0]
-        self._sessions[session_id] = (agent, now)
+        self._sessions[key] = (agent, now)
         return agent
 
     def _expire(self) -> None:

@@ -19,12 +19,21 @@
     #timings { margin-top: 1rem; font-family: ui-monospace, monospace; font-size: .8rem;
                color: #555; }
     .hint { color: #666; font-size: .9rem; }
+    #langs { display: flex; gap: .5rem; margin-bottom: 1rem; }
+    .lang { flex: 1; padding: .6rem; border-radius: 8px; border: 1px solid #ccc;
+            background: #fff; cursor: pointer; font-size: .95rem; }
+    .lang.active { background: #1e40af; border-color: #1e40af; color: #fff; }
   </style>
 </head>
 <body>
   <h1>VoiceDesk — BrightSmile Dental</h1>
   <p class="hint">Hold the button, speak, then release. Try:
     <em>"Book me Monday July 13th 2026 at 9am, Jane Doe, 5551234, for a cleaning."</em></p>
+
+  <div id="langs">
+    <button class="lang active" data-lang="en">English</button>
+    <button class="lang" data-lang="zh">中文</button>
+  </div>
 
   <button id="talk">Hold to talk</button>
 

@@ -6,6 +6,18 @@ const timingsEl = document.getElementById("timings");
 // One session per page load, so the agent remembers this caller across turns.
 const sessionId = crypto.randomUUID();
 
+let lang = "en";
+const BCP47 = { en: "en-US", zh: "zh-CN" };
+
+document.querySelectorAll(".lang").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    lang = btn.dataset.lang;
+    document.querySelectorAll(".lang").forEach((b) =>
+      b.classList.toggle("active", b === btn));
+    talk.textContent = lang === "zh" ? "按住说话" : "Hold to talk";
+  });
+});
+
 let recorder = null;
 let chunks = [];
 let wantsToRecord = false;
@@ -47,8 +59,10 @@ function stopRecording() {
 
 async function send(blob) {
   if (!blob || blob.size < 1000) {
-    transcriptEl.textContent = "(didn't catch that)";
-    replyEl.textContent = "Sorry, I didn't catch that. Could you say that again?";
+    transcriptEl.textContent = lang === "zh" ? "（没有听清）" : "(didn't catch that)";
+    replyEl.textContent = lang === "zh"
+      ? "抱歉，我没有听清，可以再说一遍吗？"
+      : "Sorry, I didn't catch that. Could you say that again?";
     return;
   }
 
@@ -59,6 +73,7 @@ async function send(blob) {
 
   const form = new FormData();
   form.append("session_id", sessionId);
+  form.append("lang", lang);
   form.append("audio", blob, "turn.webm");
 
   try {
@@ -69,7 +84,7 @@ async function send(blob) {
     const t = data.timings;
     timingsEl.textContent =
       `stt ${t.stt_ms}ms · agent ${t.agent_ms}ms · total ${t.total_ms}ms`;
-    speak(data.reply);
+    speak(data.reply, data.lang);
   } catch (err) {
     replyEl.textContent = "Something went wrong. Please try again.";
   } finally {
@@ -77,10 +92,11 @@ async function send(blob) {
   }
 }
 
-function speak(text) {
+function speak(text, replyLang) {
   // Browser TTS: starts instantly, costs nothing, adds no network latency.
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = BCP47[replyLang] || BCP47.en;
   utterance.rate = 1.05;
   window.speechSynthesis.speak(utterance);
 }

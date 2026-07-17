@@ -18,7 +18,7 @@ from voicedesk.voice.server import (
 
 
 class _RaisingSTT:
-    def transcribe(self, audio, filename="audio.webm"):
+    def transcribe(self, audio, filename="audio.webm", language="en"):
         raise STTError("429 rate limit")
 
 
@@ -32,7 +32,7 @@ def conn():
 
 
 def _client(conn, stt, llm):
-    sessions = SessionStore(lambda: Agent(conn, llm))
+    sessions = SessionStore(lambda lang: Agent(conn, llm))
     return TestClient(create_app(stt, sessions))
 
 

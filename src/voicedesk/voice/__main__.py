@@ -1,12 +1,14 @@
 import sqlite3
 import sys
+from datetime import date
 
 import uvicorn
 from dotenv import load_dotenv
 
-from voicedesk.agent import Agent
+from voicedesk.agent import Agent, build_system_prompt
 from voicedesk.db import init_db
 from voicedesk.groq_client import GroqLLM
+from voicedesk.lang import faq_doc_for
 from voicedesk.voice.server import create_app
 from voicedesk.voice.session import SessionStore
 from voicedesk.voice.stt import GroqWhisper
@@ -33,7 +35,12 @@ def main() -> None:
     conn.row_factory = sqlite3.Row
     init_db(conn)
 
-    sessions = SessionStore(lambda: Agent(conn, GroqLLM(on_retry=_log_retry)))
+    sessions = SessionStore(lambda lang: Agent(
+        conn,
+        GroqLLM(on_retry=_log_retry),
+        system_prompt=build_system_prompt(date.today(), lang),
+        faq_doc_path=faq_doc_for(lang),
+    ))
     app = create_app(GroqWhisper(), sessions)
 
     print("VoiceDesk is listening on http://127.0.0.1:8000")
