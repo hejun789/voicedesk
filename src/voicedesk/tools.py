@@ -7,6 +7,7 @@ _PLACEHOLDER_VALUES = {
     "", "unknown", "n/a", "na", "none", "null", "nil", "string", "tbd",
     "patient_name", "phone", "reason", "name", "patient", "caller",
     "your name", "your phone number", "your phone",
+    "未知", "无", "没有", "姓名", "电话", "电话号码",
 }
 
 

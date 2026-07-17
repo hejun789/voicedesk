@@ -1,12 +1,13 @@
 import json
 from datetime import date
+from voicedesk.lang import DEFAULT_LANG, normalize_lang
 from voicedesk.llm import LLMClient, LLMError, Message
 from voicedesk.registry import TOOL_SCHEMAS, dispatch
 
 
-def build_system_prompt(today: date) -> str:
+def build_system_prompt(today: date, lang: str = DEFAULT_LANG) -> str:
     today_str = today.strftime("%A, %d %B %Y")
-    return (
+    prompt = (
         f"You are the phone receptionist for BrightSmile Dental. "
         f"Today is {today_str}. Resolve every relative date (\"Monday\", "
         f"\"next week\", \"tomorrow\") against today's date, and always pass "
@@ -59,6 +60,13 @@ def build_system_prompt(today: date) -> str:
         "appointment that day. Do not book again — call lookup_appt and then reschedule. "
         "Keep replies short and natural, as if speaking on a phone call."
     )
+    if normalize_lang(lang) == "zh":
+        prompt += (
+            " 来电者说中文。请全程用简体中文回复。"
+            "向来电者复述电话号码时，请逐个数字用中文读出（例如“五五五一二三四”）。"
+            "姓名如果是英文，按原样保留。"
+        )
+    return prompt
 
 
 MAX_ITERS = 5
@@ -68,9 +76,13 @@ _FALLBACK = (
 
 
 class Agent:
-    def __init__(self, conn, llm: LLMClient, system_prompt: str | None = None):
+    def __init__(self, conn, llm: LLMClient, system_prompt: str | None = None,
+                 faq_doc_path: str | None = None):
         self.conn = conn
         self.llm = llm
+        # Which clinic document answer_faq reads. The caller decides (it knows
+        # the language); the model must never choose a file.
+        self.faq_doc_path = faq_doc_path
         if system_prompt is None:
             system_prompt = build_system_prompt(date.today())
         self.messages: list[dict] = [{"role": "system", "content": system_prompt}]
@@ -98,7 +110,8 @@ class Agent:
             })
             for tc in msg.tool_calls:
                 try:
-                    result = dispatch(self.conn, tc.name, tc.arguments)
+                    result = dispatch(self.conn, tc.name, tc.arguments,
+                                      faq_doc_path=self.faq_doc_path)
                 except Exception as e:
                     result = {"ok": False, "error": "tool_error", "detail": str(e)}
                 self.messages.append({
