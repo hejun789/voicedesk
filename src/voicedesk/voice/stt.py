@@ -38,10 +38,15 @@ SILENCE_HALLUCINATIONS = {
     "thanks for watching!", ".", "so",
     "谢谢观看", "谢谢大家观看", "请不吝点赞", "明镜与点点栏目",
     "字幕由amara.org社区提供", "字幕志愿者", "小编",
+    "謝謝觀看", "謝謝大家觀看", "請不吝點贊", "明鏡與點點欄目",
+    "字幕由amara.org社區提供", "字幕志願者",
 }
 
-# Chinese sentences end in these; strip them before comparing.
-_TRAILING_PUNCT = " 。．，,！!？?、…～~"
+# Chinese sentences end in these; strip them before comparing. ASCII
+# punctuation is deliberately NOT included — stripping "!" would make
+# "Thank you!" collide with the English artefact "thank you" and swallow a
+# real caller's words.
+_TRAILING_PUNCT = " 。．，！？、…～"
 
 
 def is_silence_hallucination(text: str) -> bool:

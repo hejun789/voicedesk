@@ -62,3 +62,17 @@ def test_chinese_silence_hallucinations_are_recognized():
 def test_real_chinese_speech_is_not_treated_as_silence():
     assert not is_silence_hallucination("我要预约洗牙")
     assert not is_silence_hallucination("好的")   # a real confirmation
+
+
+def test_english_farewells_with_ascii_punctuation_are_not_silence():
+    # Regression guard: ASCII trailing punctuation must not be stripped, or
+    # "Thank you!" collides with the English silence artefact "thank you" and
+    # a real caller's sign-off gets swallowed as silence.
+    assert is_silence_hallucination("Thank you!") is False
+    assert is_silence_hallucination("Bye!") is False
+
+
+def test_traditional_chinese_silence_hallucination_is_recognized():
+    # whisper-large-v3-turbo routinely emits Traditional characters for
+    # Mandarin speech even when the transcription prompt is Simplified.
+    assert is_silence_hallucination("謝謝觀看") is True

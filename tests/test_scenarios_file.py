@@ -32,7 +32,13 @@ def test_every_english_scenario_has_a_chinese_mirror(scenarios):
         mirror = by_id.get(f"zh_{s['id']}")
         assert mirror is not None, f"no Chinese mirror for {s['id']}"
         # The comparison is only meaningful if the expectations are identical.
-        assert mirror["expect"] == s["expect"], s["id"]
+        exp_en = {k: v for k, v in s["expect"].items() if k != "reply_contains"}
+        exp_zh = {k: v for k, v in mirror["expect"].items() if k != "reply_contains"}
+        assert exp_zh == exp_en, s["id"]
+        # reply_contains is the one key that cannot be language-neutral: the
+        # Chinese agent answers from the Chinese document. Require the key in
+        # both or neither, but let the needle differ.
+        assert ("reply_contains" in s["expect"]) == ("reply_contains" in mirror["expect"]), s["id"]
         assert mirror.get("seed") == s.get("seed"), s["id"]
         assert mirror["category"] == s["category"], s["id"]
 

@@ -62,6 +62,20 @@ def test_chinese_no_match_returns_sentinel(zh_doc):
     assert answer_faq("你们卖飞机票吗", zh_doc) == "NO_MATCH"
 
 
+def test_all_stopword_english_query_still_escalates(tmp_path):
+    # Regression guard: "what do you do" is entirely composed of English stop
+    # words, so _tokens(query) is empty -- the same signal used to detect
+    # non-Latin script. The discriminator must be "non-Latin script", not
+    # "empty word tokenization", or an all-stopword English caller utterance
+    # gets answered with the wrong FAQ section instead of escalating.
+    doc = tmp_path / "en.md"
+    doc.write_text("## Hours\nOpen Monday to Friday 9am to 5pm.\n\n"
+                   "## Location\nWe are located at 200 Market Street.\n",
+                   encoding="utf-8")
+    assert answer_faq("what do you do", str(doc)) == "NO_MATCH"
+    assert answer_faq("are you the", str(doc)) == "NO_MATCH"
+
+
 def test_english_query_still_uses_the_word_path(tmp_path):
     # Regression guard: English retrieval is measured at 92-100% and must not
     # change. A query with word tokens must never fall through to n-grams.

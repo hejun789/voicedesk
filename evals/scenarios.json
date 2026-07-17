@@ -716,7 +716,7 @@
       ],
       "escalated": false,
       "appointment_count": 0,
-      "reply_contains": "Friday"
+      "reply_contains": "周五"
     },
     "lang": "zh"
   },
@@ -761,7 +761,7 @@
         "answer_faq"
       ],
       "escalated": false,
-      "reply_contains": "whitening"
+      "reply_contains": "美白"
     },
     "lang": "zh"
   },
@@ -1149,9 +1149,8 @@
     "category": "ambiguous",
     "turns": [
       "帮我约2026年7月13日星期一早上9点。我叫Jane Doe，电话5551234，洗牙。",
-      "对，没错。",
       "等一下，能改成11点吗？",
-      "对，麻烦改一下。"
+      "对，没错。"
     ],
     "expect": {
       "escalated": false,

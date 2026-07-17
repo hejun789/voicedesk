@@ -9,12 +9,21 @@ const sessionId = crypto.randomUUID();
 let lang = "en";
 const BCP47 = { en: "en-US", zh: "zh-CN" };
 
+function setLabels() {
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  if (talk.classList.contains("recording")) {
+    talk.textContent = lang === "zh" ? "正在聆听…松开发送" : "Listening… release to send";
+  } else {
+    talk.textContent = lang === "zh" ? "按住说话" : "Hold to talk";
+  }
+}
+
 document.querySelectorAll(".lang").forEach((btn) => {
   btn.addEventListener("click", () => {
     lang = btn.dataset.lang;
     document.querySelectorAll(".lang").forEach((b) =>
       b.classList.toggle("active", b === btn));
-    talk.textContent = lang === "zh" ? "按住说话" : "Hold to talk";
+    setLabels();
   });
 });
 
@@ -47,14 +56,14 @@ async function startRecording() {
   };
   recorder.start();
   talk.classList.add("recording");
-  talk.textContent = "Listening… release to send";
+  setLabels();
 }
 
 function stopRecording() {
   wantsToRecord = false;
   if (recorder && recorder.state === "recording") recorder.stop();
   talk.classList.remove("recording");
-  talk.textContent = "Hold to talk";
+  setLabels();
 }
 
 async function send(blob) {
@@ -79,7 +88,7 @@ async function send(blob) {
   try {
     const res = await fetch("/turn", { method: "POST", body: form });
     const data = await res.json();
-    transcriptEl.textContent = data.transcript || "(didn't catch that)";
+    transcriptEl.textContent = data.transcript || (lang === "zh" ? "（没有听清）" : "(didn't catch that)");
     replyEl.textContent = data.reply;
     const t = data.timings;
     timingsEl.textContent =

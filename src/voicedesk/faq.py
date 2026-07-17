@@ -49,13 +49,14 @@ def answer_faq(query: str, doc_path: str = "clinic_info.md") -> str:
     with open(doc_path, encoding="utf-8") as f:
         doc = f.read()
 
-    # An empty word tokenization is the signal for a non-Latin script. English
-    # keeps the word path unchanged; only then do we fall back to n-grams.
+    # Non-Latin script is the signal to fall back to n-grams, not "empty word
+    # tokenization" -- an all-stopword English query (e.g. "what do you do")
+    # also tokenizes to nothing and must still escalate, not fall through to
+    # a scored n-gram match against the wrong section.
     q = _tokens(query)
     score = _score_words
-    if not q:
-        q = _ngrams(query)
-        score = _score_ngrams
+    if not q and re.search(r"[^\x00-\x7F]", query):
+        q, score = _ngrams(query), _score_ngrams
     if not q:
         return "NO_MATCH"
 
