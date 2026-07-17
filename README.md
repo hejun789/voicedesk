@@ -315,6 +315,36 @@ used. Set `GROQ_MODEL` in `.env` to compare models.
 
 ---
 
+## Bilingual (English + 中文)
+
+The agent takes calls in English or Chinese. Language is **explicit configuration, not
+inference** — a toggle on the page sends `lang` with each turn, which selects Whisper's
+language, the clinic document, the system prompt, and the browser's TTS voice. Whisper can
+auto-detect, but it is unreliable on short utterances and would make every downstream
+choice depend on a guess.
+
+The interesting part was **FAQ retrieval**. It scored English by word overlap — and
+`_tokens("你们的营业时间")` returns an **empty set**, because the regex was `[a-z]+`. Even a
+Unicode-aware regex would not have helped: Chinese has no spaces between words, so there is
+nothing to split on. The fix is character 2-grams (`营业时间` → `{营业, 业时, 时间}`), used
+**only as a fallback when word tokenization yields nothing**. English keeps its measured
+word path untouched; Chinese gets a path that works; no new dependencies.
+
+Also Chinese-specific: Whisper hallucinates `谢谢观看` ("thanks for watching", learned from
+YouTube subtitles) on silence, so the silence denylist needed Chinese entries — otherwise
+noise would reach the booking tools.
+
+All 30 scenarios are mirrored in Chinese with **identical expectations**, so the two
+languages are directly comparable. Each suite runs independently, which matters on a free
+tier that allows roughly one full 3× run per day:
+
+```powershell
+python -m voicedesk.evals --lang en --runs 3
+python -m voicedesk.evals --lang zh --runs 3
+```
+
+---
+
 ## Roadmap
 
 - **Phase 1 — text agent** ✅ tool-calling loop, SQLite calendar, graceful escalation
@@ -323,4 +353,7 @@ used. Set `GROQ_MODEL` in `.env` to compare models.
   agent → browser speech-synthesis (TTS). One HTTP POST per turn — no WebSockets needed,
   because the browser speaks the reply itself. The agent core and eval harness carry over
   unchanged, because neither knows about audio. ~2s per turn end-to-end.
+- **Phase 5 — Chinese** ✅ bilingual voice (EN/中文): explicit language config, character
+  n-gram FAQ retrieval for Chinese, Chinese silence-artefact handling, and all 30 eval
+  scenarios mirrored with identical expectations for a true per-language comparison
 - **Phase 4 — deploy** hosted demo, per-turn latency budget, cost per resolution
