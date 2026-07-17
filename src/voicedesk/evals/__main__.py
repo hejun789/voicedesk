@@ -20,6 +20,13 @@ def select_scenarios(scenarios: list[dict], scenario_id: str | None) -> list[dic
     return picked
 
 
+def select_by_lang(scenarios: list[dict], lang: str | None) -> list[dict]:
+    """Filter to one language. A scenario with no `lang` field is English."""
+    if lang is None:
+        return scenarios
+    return [s for s in scenarios if s.get("lang", "en") == lang]
+
+
 def require_api_key() -> None:
     if not os.environ.get("GROQ_API_KEY"):
         raise SystemExit(
@@ -56,6 +63,8 @@ def main() -> None:
     )
     p.add_argument("--scenarios", default="evals/scenarios.json")
     p.add_argument("--scenario", default=None, help="run only this scenario id")
+    p.add_argument("--lang", default=None, choices=["en", "zh"],
+                   help="run only this language's scenarios")
     p.add_argument("--runs", type=int, default=3, help="runs per scenario")
     p.add_argument("--out", default=None, help="markdown report path")
     p.add_argument("--delay", type=float, default=0.0,
@@ -64,7 +73,8 @@ def main() -> None:
 
     require_api_key()
 
-    scenarios = select_scenarios(load_scenarios(args.scenarios), args.scenario)
+    scenarios = select_by_lang(load_scenarios(args.scenarios), args.lang)
+    scenarios = select_scenarios(scenarios, args.scenario)
     model = resolve_model()
     print(f"Model:     {model}", file=sys.stderr, flush=True)
     print(f"Scenarios: {len(scenarios)}", file=sys.stderr, flush=True)

@@ -6,6 +6,7 @@ from datetime import date
 from voicedesk import tools
 from voicedesk.agent import Agent, build_system_prompt
 from voicedesk.db import init_db
+from voicedesk.lang import faq_doc_for
 from voicedesk.llm import LLMError
 from voicedesk.evals.scoring import RunRecord, RunResult, score_run
 
@@ -96,7 +97,12 @@ def run_scenario_once(scenario: dict, llm) -> RunRecord:
     conn = fresh_db()
     seed_db(conn, scenario.get("seed", []))
     capturing = _ErrorCapturingLLM(llm)
-    agent = Agent(conn, capturing, system_prompt=build_system_prompt(EVAL_TODAY))
+    lang = scenario.get("lang")
+    agent = Agent(
+        conn, capturing,
+        system_prompt=build_system_prompt(EVAL_TODAY, lang),
+        faq_doc_path=faq_doc_for(lang),
+    )
 
     final_reply = ""
     start = time.perf_counter()
