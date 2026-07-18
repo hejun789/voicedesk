@@ -60,7 +60,7 @@ Every boundary is deliberate:
 - **Tools know nothing about the LLM.** They're pure functions over a SQLite
   connection, so they're unit-testable with an in-memory database.
 - **The agent knows nothing about the provider.** It talks to an `LLMClient`
-  protocol, so the entire **192-test** suite runs offline against a `FakeLLM` — no
+  protocol, so the entire **256-test** suite runs offline against a `FakeLLM` — no
   network, no API key, no cost.
 - **The agent knows nothing about audio.** That's why the voice layer (Groq Whisper
   in, browser speech-synthesis out) was an *additive* change that never touched the
@@ -298,7 +298,7 @@ speaks the reply back. Each turn shows its latency breakdown (stt / agent / tota
 
 Use Chrome or Edge — it needs `MediaRecorder` and the Web Speech API.
 
-### Run the tests (192, fully offline — no API key needed)
+### Run the tests (256, fully offline — no API key needed)
 ```powershell
 $env:PYTHONPATH = "src"; python -m pytest -q
 ```
@@ -316,6 +316,10 @@ used. Set `GROQ_MODEL` in `.env` to compare models.
 ---
 
 ## Bilingual (English + 中文)
+
+Verified end to end against the live API: a Mandarin caller books an appointment by voice,
+the agent reads the phone number back digit by digit in Chinese (五五五一二三四), and the
+browser speaks the reply in a Mandarin voice.
 
 The agent takes calls in English or Chinese. Language is **explicit configuration, not
 inference** — a toggle on the page sends `lang` with each turn, which selects Whisper's
