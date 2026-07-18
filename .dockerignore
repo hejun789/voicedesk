@@ -1,0 +1,15 @@
+.git/
+.gitignore
+.venv/
+.env
+.env.example
+tests/
+docs/
+reports/
+.superpowers/
+*.db
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+huggingface-space-README.md
+README.md
