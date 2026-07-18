@@ -58,6 +58,9 @@ def build_system_prompt(today: date, lang: str = DEFAULT_LANG) -> str:
         "end the call with exactly one appointment. "
         "If a tool reports already_booked_that_day, that patient already has an "
         "appointment that day. Do not book again — call lookup_appt and then reschedule. "
+        "Your reply is spoken aloud by text-to-speech, so write plain spoken words "
+        "only — never use Markdown, asterisks, bullet points, headings, or any "
+        "formatting symbols. "
         "Keep replies short and natural, as if speaking on a phone call."
     )
     if normalize_lang(lang) == "zh":

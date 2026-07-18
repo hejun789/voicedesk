@@ -97,6 +97,11 @@ def test_build_system_prompt_forbids_speaking_internal_ids_aloud():
     assert "Never say an appointment_id, database id, or any internal identifier out loud" in prompt
 
 
+def test_build_system_prompt_forbids_markdown_since_it_is_spoken_aloud():
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "never use Markdown" in prompt
+
+
 def test_build_system_prompt_requires_escalation_for_medical_and_billing():
     prompt = build_system_prompt(date(2026, 7, 10))
     assert "medical" in prompt.lower()
