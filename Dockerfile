@@ -12,6 +12,8 @@ COPY clinic_info.md clinic_info.zh.md ./
 
 ENV PYTHONPATH=/app/src
 ENV PORT=7860
+# The public demo runs on 8b for its higher free-tier limits; override in the Space to raise quality.
+ENV GROQ_MODEL=llama-3.1-8b-instant
 EXPOSE 7860
 
 CMD ["python", "-m", "voicedesk.voice"]

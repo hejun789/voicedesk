@@ -10,8 +10,9 @@ microphone), and the Groq key is stored as a Space Secret — never in the image
    - **Hardware:** CPU basic (free)
 2. In the Space's **Settings → Variables and secrets**, add:
    - Secret `GROQ_API_KEY` = your Groq key
-   - (optional) Variable `GROQ_MODEL` = `llama-3.1-8b-instant` (default; set
-     `openai/gpt-oss-120b` for higher quality at the cost of a tighter daily cap)
+   - (optional) Variable `GROQ_MODEL` — the image already defaults this to
+     `llama-3.1-8b-instant` (chosen for higher free-tier limits). Override it to
+     `openai/gpt-oss-120b` for higher quality at the cost of a much tighter daily cap.
    - (optional) Variables `PER_IP_DAILY_LIMIT`, `GLOBAL_DAILY_LIMIT` to tune the caps
 3. Push this repo's contents to the Space, with `huggingface-space-README.md`
    renamed to `README.md` **in the Space** (its YAML header configures the Space).

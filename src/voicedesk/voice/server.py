@@ -36,7 +36,11 @@ _DEMO_LIMIT = {"en": DEMO_LIMIT, "zh": DEMO_LIMIT_ZH}
 
 def _client_ip(request: Request) -> str:
     """The visitor's IP: the first hop of X-Forwarded-For (set by the host's
-    proxy), falling back to the socket peer when the header is absent."""
+    proxy), falling back to the socket peer when the header is absent.
+
+    Note: X-Forwarded-For is client-controlled, so the per-IP cap is
+    best-effort; the global daily cap is the real protection against quota
+    drain."""
     xff = request.headers.get("x-forwarded-for")
     if xff:
         return xff.split(",")[0].strip()
@@ -60,9 +64,10 @@ def create_app(stt, sessions, lock=None, limiter=None) -> FastAPI:
     """`stt` implements STTClient; `sessions` is a SessionStore. Both are
     injected so the whole app can be tested with no network and no microphone.
 
-    `lock` serialises access to the shared sqlite3.Connection, since blocking
-    work is offloaded to the threadpool and multiple worker threads may call
-    into the agent concurrently. Defaults to a fresh threading.Lock()."""
+    `lock` serialises agent turns. Each session now has its own in-memory
+    calendar, but a single global lock keeps concurrent visitors' agent calls
+    from interleaving on shared process state and naturally throttles quota
+    burn on the free tier. Defaults to a fresh threading.Lock()."""
     if lock is None:
         lock = threading.Lock()
     app = FastAPI(title="VoiceDesk")
