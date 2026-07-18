@@ -1,5 +1,9 @@
 # Deploying the public demo (Hugging Face Spaces)
 
+> **Note:** Hugging Face now puts the Docker SDK behind a paid plan, so the recommended host
+> is **Render** — see [RENDER.md](RENDER.md). This document is kept for reference in case HF
+> restores a free Docker tier; the same repo `Dockerfile` works on both.
+
 The app runs as a Docker Space. HF provides HTTPS automatically (required for the
 microphone), and the Groq key is stored as a Space Secret — never in the image.
 

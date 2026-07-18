@@ -20,11 +20,12 @@ eval itself](#and-two-bugs-in-the-eval-itself).**
 
 ## Live demo
 
-**🎙️ Try it: <https://hejun789-voicedesk.hf.space>** — hold the button and speak, in
-English or 中文, to book an appointment by voice. Chrome or Edge (needs a microphone).
+**🎙️ Try it: <https://voicedesk.onrender.com>** — hold the button and speak, in English or
+中文, to book an appointment by voice. Chrome or Edge (needs a microphone).
 
-> It runs on a free tier, so it is rate-limited and may reach its daily cap — in which
-> case it says so politely. **Demo video:** _(add your 30-second recording here)_
+> It runs on a free tier: it sleeps when idle (≈30s to wake on the first hit) and is
+> rate-limited, so it may reach its daily cap — in which case it says so politely.
+> **Demo video:** _(add your 30-second recording here)_
 
 ---
 
