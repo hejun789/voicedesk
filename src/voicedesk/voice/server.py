@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from voicedesk.agent import _FALLBACK as AGENT_FALLBACK
+from voicedesk.lang import DEFAULT_LANG, normalize_lang
 from voicedesk.voice.stt import STTError, is_silence_hallucination
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -18,6 +19,12 @@ STT_FAILED = (
     "Sorry, I'm having trouble hearing you. "
     "Let me have a team member call you back."
 )
+
+DIDNT_CATCH_ZH = "抱歉，我没有听清，可以再说一遍吗？"
+STT_FAILED_ZH = "抱歉，我听不清楚。我让同事回电给您。"
+
+_DIDNT_CATCH = {"en": DIDNT_CATCH, "zh": DIDNT_CATCH_ZH}
+_STT_FAILED = {"en": STT_FAILED, "zh": STT_FAILED_ZH}
 
 # A tap (rather than a hold) makes MediaRecorder emit an empty/near-empty
 # blob. Treat anything under this as "didn't catch that" rather than
@@ -51,8 +58,10 @@ def create_app(stt, sessions, lock=None) -> FastAPI:
     async def turn(
         session_id: str = Form(...),
         audio: UploadFile = File(...),
+        lang: str = Form(DEFAULT_LANG),
     ):
         started = time.perf_counter()
+        lang = normalize_lang(lang)
         data = await audio.read()
 
         if len(data) < MIN_AUDIO_BYTES or len(data) > MAX_AUDIO_BYTES:
@@ -60,23 +69,26 @@ def create_app(stt, sessions, lock=None) -> FastAPI:
             # don't touch the agent, just apologise.
             return {
                 "transcript": "",
-                "reply": DIDNT_CATCH,
+                "reply": _DIDNT_CATCH[lang],
                 "timings": {"stt_ms": 0, "agent_ms": 0,
                             "total_ms": _ms_since(started)},
+                "lang": lang,
             }
 
         stt_started = time.perf_counter()
         try:
-            transcript = await run_in_threadpool(stt.transcribe, data, "turn.webm")
+            transcript = await run_in_threadpool(
+                stt.transcribe, data, "turn.webm", lang)
         except STTError as e:
             # Never crash the call — speak an apology and report the error.
             print(f"[voice] STT error: {e}", file=sys.stderr, flush=True)
             return {
                 "transcript": "",
-                "reply": STT_FAILED,
+                "reply": _STT_FAILED[lang],
                 "timings": {"stt_ms": _ms_since(stt_started), "agent_ms": 0,
                             "total_ms": _ms_since(started)},
                 "error": "stt_failed",
+                "lang": lang,
             }
         stt_ms = _ms_since(stt_started)
 
@@ -84,16 +96,17 @@ def create_app(stt, sessions, lock=None) -> FastAPI:
             # Don't spend an LLM call, and don't pollute the history with noise.
             return {
                 "transcript": "",
-                "reply": DIDNT_CATCH,
+                "reply": _DIDNT_CATCH[lang],
                 "timings": {"stt_ms": stt_ms, "agent_ms": 0,
                             "total_ms": _ms_since(started)},
+                "lang": lang,
             }
 
         agent_started = time.perf_counter()
 
         def _run_agent() -> str:
             with lock:
-                agent = sessions.get_or_create(session_id)
+                agent = sessions.get_or_create(session_id, lang)
                 return agent.respond(transcript)
 
         reply = await run_in_threadpool(_run_agent)
@@ -108,6 +121,7 @@ def create_app(stt, sessions, lock=None) -> FastAPI:
             "reply": reply,
             "timings": {"stt_ms": stt_ms, "agent_ms": agent_ms,
                         "total_ms": _ms_since(started)},
+            "lang": lang,
         }
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

@@ -16,7 +16,7 @@ def _counter_factory():
     """Each call returns a distinct object, so we can prove identity/isolation."""
     made = []
 
-    def factory():
+    def factory(lang="en"):
         agent = object()
         made.append(agent)
         return agent

@@ -41,7 +41,7 @@ TOOL_SCHEMAS = [
 ]
 
 
-def dispatch(conn, name: str, args: dict) -> dict:
+def dispatch(conn, name: str, args: dict, faq_doc_path: str | None = None) -> dict:
     if name == "find_slots":
         return {"slots": tools.find_slots(conn, args["day_iso"])}
     if name == "book":
@@ -54,7 +54,10 @@ def dispatch(conn, name: str, args: dict) -> dict:
     if name == "lookup_appt":
         return {"results": tools.lookup_appt(conn, args.get("name"), args.get("phone"))}
     if name == "answer_faq":
-        kwargs = {"doc_path": args["doc_path"]} if "doc_path" in args else {}
+        # The caller chooses the document, never the model — otherwise a model
+        # could name an arbitrary file in its tool arguments.
+        doc_path = faq_doc_path or args.get("doc_path")
+        kwargs = {"doc_path": doc_path} if doc_path else {}
         answer = answer_faq(args["query"], **kwargs)
         if answer == "NO_MATCH":
             return {
