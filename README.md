@@ -20,7 +20,7 @@ eval itself](#and-two-bugs-in-the-eval-itself).**
 
 ## Live demo
 
-**🎙️ Try it: <https://voicedesk.onrender.com>** — hold the button and speak, in English or
+**🎙️ Try it: <https://voicedesk-ch1y.onrender.com>** — hold the button and speak, in English or
 中文, to book an appointment by voice. Chrome or Edge (needs a microphone).
 
 > It runs on a free tier: it sleeps when idle (≈30s to wake on the first hit) and is
