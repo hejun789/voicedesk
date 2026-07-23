@@ -1,8 +1,26 @@
 import json
+import re
 from datetime import date
 from voicedesk.lang import DEFAULT_LANG, normalize_lang
 from voicedesk.llm import LLMClient, LLMError, Message
 from voicedesk.registry import TOOL_SCHEMAS, dispatch
+
+_LEAKED_TOOL_CALL_RE = re.compile(
+    r"[\(<]\s*function\s*=\s*\w+\s*>?\s*\{.*?\}\s*[\)>](\s*</function>)?",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _strip_leaked_tool_syntax(text: str) -> str:
+    """Some models occasionally narrate their own tool call as literal
+    pseudo-code inside the reply text — e.g. '(function=book>{"patient_name":
+    "Jane Doe", ...})' — instead of a clean natural-language sentence. That
+    text is read aloud by TTS and displayed to the caller, so strip it before
+    anyone ever sees or hears it. This is a defense-in-depth backstop: the
+    prompt also asks the model not to do this, but the model cannot be
+    trusted to comply on its own."""
+    cleaned = _LEAKED_TOOL_CALL_RE.sub("", text)
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 
 def build_system_prompt(today: date, lang: str = DEFAULT_LANG) -> str:
@@ -61,6 +79,9 @@ def build_system_prompt(today: date, lang: str = DEFAULT_LANG) -> str:
         "Your reply is spoken aloud by text-to-speech, so write plain spoken words "
         "only — never use Markdown, asterisks, bullet points, headings, or any "
         "formatting symbols. "
+        "Never narrate or repeat your own tool calls using code-like syntax such as "
+        "\"(function=name>{...})\" — after you take an action, just tell the caller "
+        "what happened in plain spoken words. "
         "Keep replies short and natural, as if speaking on a phone call."
     )
     if normalize_lang(lang) == "zh":
@@ -99,7 +120,7 @@ class Agent:
                 self.messages.append({"role": "assistant", "content": _FALLBACK})
                 return _FALLBACK
             if not msg.tool_calls:
-                text = msg.content or _FALLBACK
+                text = _strip_leaked_tool_syntax(msg.content or "") or _FALLBACK
                 self.messages.append({"role": "assistant", "content": text})
                 return text
             self.messages.append({

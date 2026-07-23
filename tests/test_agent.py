@@ -142,3 +142,63 @@ def test_agent_explicit_system_prompt_used_verbatim(db):
     custom = "custom prompt text"
     agent = Agent(db, FakeLLM([]), system_prompt=custom)
     assert agent.messages[0]["content"] == custom
+
+
+from voicedesk.agent import _strip_leaked_tool_syntax
+
+
+def test_strip_leaked_tool_syntax_removes_paren_style_call():
+    text = ('I have Jane scheduling a cleaning. Is that correct? '
+            '(function=book>{ "patient_name": "Jane Doe", "phone": "5551234" })')
+    cleaned = _strip_leaked_tool_syntax(text)
+    assert "(function=" not in cleaned
+    assert "Is that correct?" in cleaned
+
+
+def test_strip_leaked_tool_syntax_removes_angle_style_call():
+    text = ('<function=find_slots{"day_iso": "2026-07-13"}> '
+            'We have several times open that day.')
+    cleaned = _strip_leaked_tool_syntax(text)
+    assert "<function=" not in cleaned
+    assert "several times open" in cleaned
+
+
+def test_strip_leaked_tool_syntax_removes_multiple_occurrences():
+    text = ('(function=find_slots>{ "day_iso": "2026-07-13" }) First, let me check. '
+            '(function=lookup_appt>{ "phone": "5551234" }) You have an appointment.')
+    cleaned = _strip_leaked_tool_syntax(text)
+    assert "function=" not in cleaned
+    assert "First, let me check." in cleaned
+    assert "You have an appointment." in cleaned
+
+
+def test_strip_leaked_tool_syntax_leaves_normal_text_untouched():
+    text = "Your appointment is booked for Monday at 9am. Anything else?"
+    assert _strip_leaked_tool_syntax(text) == text
+
+
+def test_agent_sanitizes_a_reply_that_leaks_tool_call_syntax(db):
+    from voicedesk.llm import FakeLLM, Message
+    llm = FakeLLM([Message(
+        content='Booked! (function=book>{ "patient_name": "Jane Doe" })',
+        tool_calls=[])])
+    agent = Agent(db, llm)
+    reply = agent.respond("book me monday 9am")
+    assert "function=" not in reply
+    assert "Booked!" in reply
+
+
+def test_agent_falls_back_when_reply_is_purely_leaked_syntax(db):
+    from voicedesk.agent import _FALLBACK
+    from voicedesk.llm import FakeLLM, Message
+    llm = FakeLLM([Message(
+        content='(function=book>{ "patient_name": "Jane Doe" })',
+        tool_calls=[])])
+    agent = Agent(db, llm)
+    assert agent.respond("book me monday 9am") == _FALLBACK
+
+
+def test_build_system_prompt_forbids_narrating_tool_calls():
+    from datetime import date
+    prompt = build_system_prompt(date(2026, 7, 10))
+    assert "Never narrate or repeat your own tool calls" in prompt
