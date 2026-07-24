@@ -76,6 +76,17 @@ def test_all_stopword_english_query_still_escalates(tmp_path):
     assert answer_faq("are you the", str(doc)) == "NO_MATCH"
 
 
+def test_english_query_against_chinese_doc_finds_location(zh_doc):
+    # Regression guard for a real bug found via the zh eval suite (zh_faq_location,
+    # 0/3 pass): the model sometimes calls answer_faq with an English query (e.g.
+    # "location") even mid-Chinese-conversation. The literal word "location" never
+    # appears in the Chinese document, so English word-tokenization scores 0
+    # everywhere and returns NO_MATCH -- which the agent then escalates instead of
+    # answering, even though the address is right there in the doc.
+    assert "Market Street" in answer_faq("location", zh_doc)
+    assert "Market Street" in answer_faq("clinic location", zh_doc)
+
+
 def test_english_query_still_uses_the_word_path(tmp_path):
     # Regression guard: English retrieval is measured at 92-100% and must not
     # change. A query with word tokens must never fall through to n-grams.

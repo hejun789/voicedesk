@@ -202,3 +202,16 @@ def test_build_system_prompt_forbids_narrating_tool_calls():
     from datetime import date
     prompt = build_system_prompt(date(2026, 7, 10))
     assert "Never narrate or repeat your own tool calls" in prompt
+
+
+def test_build_system_prompt_zh_requires_chinese_faq_queries():
+    # Regression guard for a real bug found via the zh eval suite
+    # (zh_faq_location, 0/3 pass): the model would call answer_faq("location")
+    # in English mid-Chinese-conversation, and the literal English word never
+    # appears in the Chinese doc, so retrieval came up empty and the caller got
+    # escalated instead of answered. faq.py now has a code-level bilingual
+    # bridge as a backstop, but the prompt should also steer the model toward
+    # Chinese query terms in the first place.
+    prompt = build_system_prompt(date(2026, 7, 10), lang="zh")
+    assert "answer_faq" in prompt
+    assert "中文关键词" in prompt

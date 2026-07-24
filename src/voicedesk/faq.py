@@ -45,6 +45,20 @@ def _score_ngrams(q: set[str], title: str, body: str) -> int:
     return _TITLE_WEIGHT * len(q & _ngrams(title)) + len(q & _ngrams(body))
 
 
+# Bilingual bridge for the handful of topics the clinic doc actually covers.
+# A query can be English even mid-Chinese-conversation (the model sometimes
+# calls answer_faq("location") instead of a Chinese phrase), but the literal
+# English word may never appear in a Chinese-only section body -- there is no
+# lexical overlap for word- or n-gram-scoring to find. This maps a known
+# English topic word straight to its section's Chinese anchor term.
+_TOPIC_ALIASES: dict[str, str] = {
+    "location": "地址", "address": "地址", "where": "地址",
+    "hours": "营业时间", "time": "营业时间", "open": "营业时间",
+    "insurance": "保险",
+    "services": "服务项目", "service": "服务项目",
+}
+
+
 def answer_faq(query: str, doc_path: str = "clinic_info.md") -> str:
     with open(doc_path, encoding="utf-8") as f:
         doc = f.read()
@@ -65,4 +79,14 @@ def answer_faq(query: str, doc_path: str = "clinic_info.md") -> str:
         s = score(q, title, body)
         if s > best_score:
             best_body, best_score = body, s
+
+    if best_score == 0 and score is _score_words:
+        anchors = {_TOPIC_ALIASES[w] for w in q if w in _TOPIC_ALIASES}
+        alias_q = {g for anchor in anchors for g in _ngrams(anchor)}
+        if alias_q:
+            for title, body in _sections(doc):
+                s = _score_ngrams(alias_q, title, body)
+                if s > best_score:
+                    best_body, best_score = body, s
+
     return best_body if best_score > 0 else "NO_MATCH"

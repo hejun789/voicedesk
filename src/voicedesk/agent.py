@@ -89,6 +89,8 @@ def build_system_prompt(today: date, lang: str = DEFAULT_LANG) -> str:
             " 来电者说中文。请全程用简体中文回复。"
             "向来电者复述电话号码时，请逐个数字用中文读出（例如“五五五一二三四”）。"
             "姓名如果是英文，按原样保留。"
+            "调用 answer_faq 时，请使用中文关键词（例如“地址”“营业时间”“保险”"
+            "“服务项目”），不要使用英文查询词。"
         )
     return prompt
 
