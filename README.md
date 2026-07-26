@@ -1,5 +1,7 @@
 # VoiceDesk — AI Voice Receptionist for Clinics
 
+[![Tests](https://github.com/hejun789/voicedesk/actions/workflows/tests.yml/badge.svg)](https://github.com/hejun789/voicedesk/actions/workflows/tests.yml)
+
 An AI agent that answers the phone for a dental clinic: it **books, reschedules and
 cancels real appointments**, answers questions about the practice, and hands off to a
 human when it shouldn't be acting alone.
