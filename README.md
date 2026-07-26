@@ -25,7 +25,6 @@ eval itself](#and-two-bugs-in-the-eval-itself).**
 
 > It runs on a free tier: it sleeps when idle (≈30s to wake on the first hit) and is
 > rate-limited, so it may reach its daily cap — in which case it says so politely.
-> **Demo video:** _(add your 30-second recording here)_
 
 ---
 
