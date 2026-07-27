@@ -12,7 +12,8 @@ export function createEnergyVAD({
   hangoverMs = 800,   // silence must persist this long to end a turn
   minSpeechMs = 200,  // sound must persist this long to start one
   bargeInThreshold = 0.08,   // strict-mode RMS floor while the agent is speaking
-  bargeInMinSpeechMs = 500,  // strict-mode sustain time while the agent is speaking
+  bargeInMinSpeechMs = 300,  // strict-mode sustain time while the agent is speaking
+  dipToleranceMs = 150,      // a gap this short does not reset a nascent turn
 } = {}) {
   let speaking = false;
   let loudSince = null;
@@ -26,9 +27,19 @@ export function createEnergyVAD({
       if (!speaking) {
         const loud = level >= startThreshold;
         if (!loud) {
-          loudSince = null;       // a dip cancels a nascent turn
+          // A dip SHORTER than dipToleranceMs must not cancel a nascent turn.
+          // Real speech drops below the RMS floor many times a second — between
+          // syllables and on stop consonants — so demanding an unbroken run made
+          // barge-in impossible to trigger by talking (found in live testing).
+          // Only a sustained gap means the caller is not actually speaking.
+          if (quietSince === null) quietSince = nowMs;
+          if (nowMs - quietSince >= dipToleranceMs) {
+            loudSince = null;
+            quietSince = null;
+          }
           return null;
         }
+        quietSince = null;        // still going; the dip was momentary
         if (loudSince === null) loudSince = nowMs;
         if (nowMs - loudSince >= startMinSpeechMs) {
           speaking = true;

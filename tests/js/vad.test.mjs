@@ -109,7 +109,7 @@ test("strict mode: a level above bargeInThreshold sustained past bargeInMinSpeec
 
 test("strict mode: loud sustained past normal minSpeechMs but not bargeInMinSpeechMs does not fire", () => {
   // Loud (above bargeInThreshold) from t=0, sustained to t=250 -- past the
-  // normal 200ms minSpeechMs, but well short of the default 500ms bargeInMinSpeechMs.
+  // normal 200ms minSpeechMs, but short of the default 300ms bargeInMinSpeechMs.
   const vad = createEnergyVAD(OPTS);
   for (let t = 0; t <= 250; t += 50) {
     assert.equal(vad.process(0.5, t, true), null);
@@ -118,7 +118,7 @@ test("strict mode: loud sustained past normal minSpeechMs but not bargeInMinSpee
 
 test("strict mode: once started, the turn still ends normally after hangoverMs of silence", () => {
   const vad = createEnergyVAD(OPTS);
-  // Reach the default bargeInMinSpeechMs (500ms) while loud and strict.
+  // Reach the default bargeInMinSpeechMs (300ms) while loud and strict.
   let started = null;
   for (let t = 0; t <= 550; t += 50) {
     const e = vad.process(0.5, t, true);
@@ -147,4 +147,47 @@ test("omitting strict entirely behaves identically to the existing non-strict te
   assert.equal(vad.process(LOUD, 0), null);
   assert.equal(vad.process(LOUD, 100), null);   // still under 200ms
   assert.equal(vad.process(LOUD, 200), "speech-start");
+});
+
+test("a syllable-length dip does not reset a nascent turn", () => {
+  // THE bug that made barge-in unusable in live testing: any single frame
+  // below threshold used to reset the start timer to zero. Real speech dips
+  // below the RMS floor many times a second — between syllables and on stop
+  // consonants — so requiring an unbroken run was impossible to satisfy by
+  // talking. Brief dips must be tolerated; only a sustained gap resets.
+  const vad = createEnergyVAD(OPTS);
+  assert.equal(vad.process(LOUD, 0), null);
+  assert.equal(vad.process(QUIET, 50), null);    // 50ms dip mid-word
+  assert.equal(vad.process(LOUD, 100), null);
+  assert.equal(vad.process(QUIET, 150), null);   // another dip
+  // 200ms of speech has now elapsed despite the dips, so the turn starts.
+  assert.equal(vad.process(LOUD, 200), "speech-start");
+});
+
+test("strict barge-in survives the dips in natural speech", () => {
+  // The live failure: a caller could not interrupt the agent by speaking
+  // normally, because the strict sustain window never survived a syllable gap.
+  const vad = createEnergyVAD(OPTS);
+  const events = [];
+  // Loud speech with a 50ms dip every 150ms — a normal speaking cadence.
+  for (let t = 0; t <= 400; t += 50) {
+    const level = (t % 150 === 100) ? QUIET : 0.5;
+    const e = vad.process(level, t, true);
+    if (e) events.push(e);
+  }
+  assert.deepEqual(events, ["speech-start"]);
+});
+
+test("a sustained gap still resets a nascent turn", () => {
+  // The tolerance must not swallow a genuine pause: a click, then silence
+  // well past the tolerance, then a later click must NOT accumulate into one
+  // turn.
+  const vad = createEnergyVAD(OPTS);
+  assert.equal(vad.process(LOUD, 0), null);
+  for (let t = 50; t <= 400; t += 50) {
+    assert.equal(vad.process(QUIET, t), null);
+  }
+  // Timer was reset by the long gap, so this lone loud frame starts over.
+  assert.equal(vad.process(LOUD, 450), null);
+  assert.equal(vad.process(LOUD, 500), null);   // only 50ms accumulated
 });
