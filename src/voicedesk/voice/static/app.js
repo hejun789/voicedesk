@@ -33,29 +33,39 @@ const LABELS = {
         speaking: "Speaking… (interrupt any time)", ptt: "Hold to talk",
         recording: "Listening… release to send", blocked:
         "Microphone blocked — allow mic access and reload.",
-        didnt: "(didn't catch that)" },
+        didnt: "(didn't catch that)", endCall: "End call" },
   zh: { idle: "开始通话", listening: "正在聆听…", thinking: "思考中…",
         speaking: "正在回答…（可随时打断）", ptt: "按住说话",
         recording: "正在聆听…松开发送", blocked: "麦克风被阻止，请允许后重新加载。",
-        didnt: "（没有听清）" },
+        didnt: "（没有听清）", endCall: "结束通话" },
 };
+
+// Appended to the hands-free in-call labels so the button visibly doubles as
+// a hang-up control (see Defect 2: hands-free calls used to be unstoppable).
+const END_CALL_HINT = { en: " (tap to end)", zh: "（点击结束）" };
+const withEndCallHint = (text) => text + END_CALL_HINT[lang];
 
 function render() {
   const L = LABELS[lang];
   document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
   talk.classList.remove("recording", "listening", "speaking");
+  talk.title = "";
   if (state.mode === "ptt") {
     talk.textContent = state.capturing ? L.recording : L.ptt;
     if (state.capturing) talk.classList.add("recording");
     return;
   }
-  if (state.name === IDLE) talk.textContent = L.idle;
-  else if (state.name === THINKING) talk.textContent = L.thinking;
+  if (state.name === IDLE) {
+    talk.textContent = L.idle;
+    return;
+  }
+  talk.title = L.endCall;
+  if (state.name === THINKING) talk.textContent = withEndCallHint(L.thinking);
   else if (state.name === SPEAKING) {
-    talk.textContent = L.speaking;
+    talk.textContent = withEndCallHint(L.speaking);
     talk.classList.add("speaking");
   } else {
-    talk.textContent = L.listening;
+    talk.textContent = withEndCallHint(L.listening);
     talk.classList.add(state.capturing ? "recording" : "listening");
   }
 }
@@ -79,7 +89,9 @@ function runAction(action) {
 async function openMic() {
   if (micStream) return true;
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
   } catch (err) {
     replyEl.textContent = LABELS[lang].blocked;
     return false;
@@ -91,6 +103,21 @@ async function openMic() {
   return true;
 }
 
+// Stops the mic and tears down the audio graph so openMic() can genuinely
+// re-open later (it short-circuits on a non-null micStream) and so the
+// browser's mic-in-use indicator turns off between calls.
+function releaseMic() {
+  if (micStream) {
+    for (const track of micStream.getTracks()) track.stop();
+  }
+  if (audioCtx && audioCtx.state !== "closed") {
+    audioCtx.close();
+  }
+  micStream = null;
+  audioCtx = null;
+  analyser = null;
+}
+
 function startVadLoop() {
   const buf = new Float32Array(analyser.fftSize);
   vad = createEnergyVAD();
@@ -100,7 +127,7 @@ function startVadLoop() {
       let sum = 0;
       for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
       const rms = Math.sqrt(sum / buf.length);
-      const event = vad.process(rms, performance.now());
+      const event = vad.process(rms, performance.now(), state.name === SPEAKING);
       if (event === "speech-start") dispatch("SPEECH_START");
       else if (event === "speech-end") dispatch("SPEECH_END");
     } finally {
@@ -246,6 +273,11 @@ document.querySelectorAll(".mode").forEach((btn) => {
     if (mode === "hands-free" && await openMic()) {
       startVadLoop();
       dispatch("ARM");
+    } else if (mode !== "hands-free") {
+      // Push-to-talk opens the mic per press; it does not need it hot
+      // continuously, and leaving it open would keep the mic-in-use
+      // indicator lit for no reason.
+      releaseMic();
     }
     render();
   });
@@ -253,11 +285,24 @@ document.querySelectorAll(".mode").forEach((btn) => {
 
 talk.addEventListener("click", async () => {
   if (state.mode !== "hands-free") return;
-  if (state.name !== IDLE) return;
-  if (await openMic()) {
-    startVadLoop();
-    dispatch("ARM");
+  if (state.name === IDLE) {
+    if (await openMic()) {
+      startVadLoop();
+      dispatch("ARM");
+    }
+    return;
   }
+  // The call is active: the button doubles as a hang-up control.
+  cancelSpeech();
+  if (recorder && recorder.state === "recording") {
+    // Abandon this turn: detach onstop first so stopping the recorder does
+    // NOT trigger send() for audio the caller no longer intends to submit.
+    recorder.onstop = null;
+    recorder.stop();
+  }
+  stopVadLoop();
+  dispatch("DISARM");
+  releaseMic();
 });
 
 const pttDown = async (e) => {

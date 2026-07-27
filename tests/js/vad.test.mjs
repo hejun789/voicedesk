@@ -86,3 +86,65 @@ test("defaults are supplied when no options are passed", () => {
   assert.equal(typeof vad.process, "function");
   assert.equal(vad.process(0.0, 0), null);
 });
+
+// --- strict mode (barge-in hardening) ---------------------------------------
+
+test("strict mode: a level above normal threshold but below bargeInThreshold never fires, even sustained", () => {
+  // 0.05 is above OPTS.threshold (0.02) but below the default bargeInThreshold (0.08).
+  const vad = createEnergyVAD(OPTS);
+  for (let t = 0; t < 5000; t += 50) {
+    assert.equal(vad.process(0.05, t, true), null);
+  }
+});
+
+test("strict mode: a level above bargeInThreshold sustained past bargeInMinSpeechMs fires speech-start exactly once", () => {
+  const vad = createEnergyVAD(OPTS);
+  const events = [];
+  for (let t = 0; t < 2000; t += 50) {
+    const e = vad.process(0.5, t, true);
+    if (e) events.push(e);
+  }
+  assert.deepEqual(events, ["speech-start"]);
+});
+
+test("strict mode: loud sustained past normal minSpeechMs but not bargeInMinSpeechMs does not fire", () => {
+  // Loud (above bargeInThreshold) from t=0, sustained to t=250 -- past the
+  // normal 200ms minSpeechMs, but well short of the default 500ms bargeInMinSpeechMs.
+  const vad = createEnergyVAD(OPTS);
+  for (let t = 0; t <= 250; t += 50) {
+    assert.equal(vad.process(0.5, t, true), null);
+  }
+});
+
+test("strict mode: once started, the turn still ends normally after hangoverMs of silence", () => {
+  const vad = createEnergyVAD(OPTS);
+  // Reach the default bargeInMinSpeechMs (500ms) while loud and strict.
+  let started = null;
+  for (let t = 0; t <= 550; t += 50) {
+    const e = vad.process(0.5, t, true);
+    if (e) started = e;
+  }
+  assert.equal(started, "speech-start");
+
+  // Ending uses hangoverMs/threshold regardless of strict.
+  const events = [];
+  for (let t = 600; t < 2000; t += 50) {
+    const e = vad.process(QUIET, t, true);
+    if (e) events.push(e);
+  }
+  assert.deepEqual(events, ["speech-end"]);
+});
+
+test("strict = false explicitly behaves identically to the existing non-strict tests", () => {
+  const vad = createEnergyVAD(OPTS);
+  assert.equal(vad.process(LOUD, 0, false), null);
+  assert.equal(vad.process(LOUD, 100, false), null);   // still under 200ms
+  assert.equal(vad.process(LOUD, 200, false), "speech-start");
+});
+
+test("omitting strict entirely behaves identically to the existing non-strict tests", () => {
+  const vad = createEnergyVAD(OPTS);
+  assert.equal(vad.process(LOUD, 0), null);
+  assert.equal(vad.process(LOUD, 100), null);   // still under 200ms
+  assert.equal(vad.process(LOUD, 200), "speech-start");
+});

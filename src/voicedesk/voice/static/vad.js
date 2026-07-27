@@ -11,22 +11,26 @@ export function createEnergyVAD({
   threshold = 0.02,   // RMS above this counts as speech
   hangoverMs = 800,   // silence must persist this long to end a turn
   minSpeechMs = 200,  // sound must persist this long to start one
+  bargeInThreshold = 0.08,   // strict-mode RMS floor while the agent is speaking
+  bargeInMinSpeechMs = 500,  // strict-mode sustain time while the agent is speaking
 } = {}) {
   let speaking = false;
   let loudSince = null;
   let quietSince = null;
 
   return {
-    process(level, nowMs) {
-      const loud = level >= threshold;
+    process(level, nowMs, strict = false) {
+      const startThreshold = strict ? bargeInThreshold : threshold;
+      const startMinSpeechMs = strict ? bargeInMinSpeechMs : minSpeechMs;
 
       if (!speaking) {
+        const loud = level >= startThreshold;
         if (!loud) {
           loudSince = null;       // a dip cancels a nascent turn
           return null;
         }
         if (loudSince === null) loudSince = nowMs;
-        if (nowMs - loudSince >= minSpeechMs) {
+        if (nowMs - loudSince >= startMinSpeechMs) {
           speaking = true;
           loudSince = null;
           quietSince = null;
@@ -35,7 +39,9 @@ export function createEnergyVAD({
         return null;
       }
 
-      // speaking
+      // speaking: ending a turn always uses hangoverMs/threshold, regardless
+      // of strict — strict affects only the speech-START decision above.
+      const loud = level >= threshold;
       if (loud) {
         quietSince = null;        // a pause between words is not the end
         return null;
