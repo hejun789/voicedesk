@@ -180,7 +180,7 @@ Expected: PASS, 8 tests
 
 Then run the full suite to confirm nothing regressed:
 Run: `PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest`
-Expected: PASS, 289 tests (281 existing + 8 new)
+Expected: PASS, 287 tests (279 existing + 8 new)
 
 - [ ] **Step 5: Commit**
 
@@ -310,7 +310,7 @@ Expected: PASS, 4 tests
 
 Run the full suite:
 Run: `PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest`
-Expected: PASS, 293 tests
+Expected: PASS, 291 tests
 
 - [ ] **Step 5: Commit**
 
@@ -1097,7 +1097,7 @@ render();
 - [ ] **Step 3: Verify both automated suites still pass**
 
 Run: `PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest`
-Expected: PASS, 293 tests
+Expected: PASS, 291 tests
 
 Run: `node --test tests/js/`
 Expected: PASS, 24 tests
@@ -1172,7 +1172,7 @@ interrupt it mid-sentence. Chrome or Edge (needs a microphone).
 - [ ] **Step 4: Run both suites one final time**
 
 Run: `PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest`
-Expected: PASS, 293 tests
+Expected: PASS, 291 tests
 
 Run: `node --test tests/js/`
 Expected: PASS, 24 tests
