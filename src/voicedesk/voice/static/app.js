@@ -189,9 +189,14 @@ function speak(text, replyLang) {
     spokenText = "";
     dispatch("TTS_END");
   };
-  utterance.onerror = () => {
-    heardChars = null;
-    spokenText = "";
+  utterance.onerror = (e) => {
+    // cancel() fires 'error' with "interrupted"/"canceled" — that is our own
+    // barge-in path, and cancelSpeech() has already recorded how much the
+    // caller heard. Only a real synthesis failure should discard it.
+    if (e.error !== "interrupted" && e.error !== "canceled") {
+      heardChars = null;
+      spokenText = "";
+    }
     dispatch("TTS_END");
   };
   window.speechSynthesis.speak(utterance);
