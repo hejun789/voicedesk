@@ -1099,7 +1099,7 @@ render();
 Run: `PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest`
 Expected: PASS, 291 tests
 
-Run: `node --test tests/js/`
+Run: `node --test tests/js/*.test.mjs`
 Expected: PASS, 24 tests
 
 - [ ] **Step 4: Manual browser verification — REQUIRED, do not skip**
@@ -1144,7 +1144,7 @@ In `.github/workflows/tests.yml`, add these two steps after the existing `- run:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: node --test tests/js/
+      - run: node --test tests/js/*.test.mjs
 ```
 
 - [ ] **Step 2: Verify the workflow file still parses**
@@ -1174,7 +1174,7 @@ interrupt it mid-sentence. Chrome or Edge (needs a microphone).
 Run: `PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest`
 Expected: PASS, 291 tests
 
-Run: `node --test tests/js/`
+Run: `node --test tests/js/*.test.mjs`
 Expected: PASS, 24 tests
 
 - [ ] **Step 5: Commit**
