@@ -82,6 +82,7 @@ def create_app(stt, sessions, lock=None, limiter=None) -> FastAPI:
         session_id: str = Form(...),
         audio: UploadFile = File(...),
         lang: str = Form(DEFAULT_LANG),
+        heard_chars: int | None = Form(None),
     ):
         started = time.perf_counter()
         lang = normalize_lang(lang)
@@ -142,6 +143,10 @@ def create_app(stt, sessions, lock=None, limiter=None) -> FastAPI:
         def _run_agent() -> str:
             with lock:
                 agent = sessions.get_or_create(session_id, lang)
+                if heard_chars is not None:
+                    # The caller cut the previous reply short; trim history to
+                    # what they actually heard before adding this turn.
+                    agent.truncate_last_reply(heard_chars)
                 return agent.respond(transcript)
 
         reply = await run_in_threadpool(_run_agent)
