@@ -1025,8 +1025,25 @@ function speak(text, replyLang) {
   utterance.onboundary = (e) => {
     if (typeof e.charIndex === "number") heardChars = e.charIndex;
   };
-  utterance.onend = () => dispatch("TTS_END");
-  utterance.onerror = () => dispatch("TTS_END");
+  // Natural completion (not a barge-in): the caller heard the whole reply,
+  // so clear the interruption-tracking state before the next turn starts.
+  // Without this, a stale boundary index leaks into the next request and the
+  // server truncates a reply the caller actually heard in full.
+  utterance.onend = () => {
+    heardChars = null;
+    spokenText = "";
+    dispatch("TTS_END");
+  };
+  utterance.onerror = (e) => {
+    // cancel() fires 'error' with "interrupted"/"canceled" — that is our own
+    // barge-in path, and cancelSpeech() has already recorded how much the
+    // caller heard. Only a real synthesis failure should discard it.
+    if (e.error !== "interrupted" && e.error !== "canceled") {
+      heardChars = null;
+      spokenText = "";
+    }
+    dispatch("TTS_END");
+  };
   window.speechSynthesis.speak(utterance);
 }
 
@@ -1054,6 +1071,13 @@ document.querySelectorAll(".mode").forEach((btn) => {
     document.querySelectorAll(".mode").forEach((b) =>
       b.classList.toggle("active", b === btn));
     cancelSpeech();
+    if (recorder && recorder.state === "recording") {
+      // Abandon this turn: detach onstop first so stopping the recorder does
+      // NOT trigger send() for audio the caller no longer intends to submit.
+      // DISARM emits no action to stop recording, so this must be explicit.
+      recorder.onstop = null;
+      recorder.stop();
+    }
     stopVadLoop();
     dispatch("DISARM");
     state = initialState(mode);
