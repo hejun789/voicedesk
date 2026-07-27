@@ -147,3 +147,30 @@ class Agent:
                 })
         self.messages.append({"role": "assistant", "content": _FALLBACK})
         return _FALLBACK
+
+    def truncate_last_reply(self, heard_chars: int) -> None:
+        """Shrink the last spoken reply to the part the caller actually heard.
+
+        When a caller barges in mid-sentence, the full reply is still sitting in
+        history — so the agent believes it said things that were never spoken and
+        may reference them later. The browser reports how far text-to-speech got;
+        this trims history to match reality and marks it, so the model knows it was
+        cut off and does not simply repeat itself.
+
+        Only the final plain-text reply is eligible: messages carrying tool_calls
+        are internal bookkeeping and are never spoken aloud.
+        """
+        if not self.messages:
+            return
+        msg = self.messages[-1]
+        if msg.get("role") != "assistant" or msg.get("tool_calls"):
+            return
+        content = msg.get("content") or ""
+        n = max(0, min(heard_chars, len(content)))
+        if n >= len(content):
+            return  # heard all of it — nothing was cut off
+        heard = content[:n].rstrip()
+        if not heard:
+            del self.messages[-1]
+        else:
+            msg["content"] = heard + " [interrupted]"
