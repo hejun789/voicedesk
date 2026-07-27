@@ -22,8 +22,9 @@ eval itself](#and-two-bugs-in-the-eval-itself).**
 
 ## Live demo
 
-**🎙️ Try it: <https://voicedesk-ch1y.onrender.com>** — hold the button and speak, in English or
-中文, to book an appointment by voice. Chrome or Edge (needs a microphone).
+**🎙️ Try it: <https://voicedesk-ch1y.onrender.com>** — start the call and just speak, in English
+or 中文, to book an appointment by voice. It listens for when you stop talking, and you can
+interrupt it mid-sentence. Chrome or Edge (needs a microphone).
 
 > It runs on a free tier: it sleeps when idle (≈30s to wake on the first hit) and is
 > rate-limited, so it may reach its daily cap — in which case it says so politely.
