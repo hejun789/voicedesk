@@ -66,5 +66,15 @@ export function createEnergyVAD({
       }
       return null;
     },
+
+    // Read-only: true exactly while a turn is nascent — sound has been
+    // observed but the sustain requirement has not yet been met. False once
+    // the turn is confirmed (speech-start resets loudSince) and once it is
+    // abandoned (a gap beyond dipToleranceMs resets loudSince). Lets app.js
+    // start capturing speculatively on the first hint of sound without
+    // process() having to carry a second signal in its single return value.
+    isPending() {
+      return loudSince !== null;
+    },
   };
 }

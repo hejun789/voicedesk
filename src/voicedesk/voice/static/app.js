@@ -22,6 +22,9 @@ let micStream = null;
 let recorder = null;
 let chunks = [];
 let rafId = null;
+// Tracks the previous frame's vad.isPending() so tick() can detect the edges
+// (nascent turn just began / just ended) rather than re-testing every frame.
+let wasPending = false;
 
 // How far text-to-speech got through the last reply before it was cut off.
 // null means "nothing was interrupted"; the server then leaves history alone.
@@ -130,6 +133,16 @@ function startVadLoop() {
       const event = vad.process(rms, performance.now(), state.name === SPEAKING);
       if (event === "speech-start") dispatch("SPEECH_START");
       else if (event === "speech-end") dispatch("SPEECH_END");
+
+      // Capture speculatively from the first hint of sound: waiting for the
+      // VAD to confirm speech costs ~250ms, which clipped the opening word
+      // of every utterance. If the sound turns out not to be speech, the
+      // recording is thrown away below — a discarded buffer is far cheaper
+      // than a lost first word.
+      const pending = vad.isPending();
+      if (pending && !wasPending && !state.capturing) startRecording();
+      else if (!pending && wasPending && !state.capturing) discardRecording();
+      wasPending = pending;
     } finally {
       rafId = requestAnimationFrame(tick);
     }
@@ -141,15 +154,34 @@ function stopVadLoop() {
   if (rafId !== null) cancelAnimationFrame(rafId);
   rafId = null;
   vad = null;
+  wasPending = false;
 }
 
 function startRecording() {
+  // Idempotent: a speculative recording may already be running from
+  // vad.isPending() going true. SPEECH_START still dispatches the
+  // START_RECORDING action on confirmation, and without this guard that
+  // would replace the in-progress speculative recorder — discarding the
+  // exact pre-roll audio this whole mechanism exists to keep, and
+  // reintroducing the clipping this fixes.
+  if (recorder && recorder.state === "recording") return;
   if (!micStream) return;
   recorder = new MediaRecorder(micStream);
   chunks = [];
   recorder.ondataavailable = (e) => chunks.push(e.data);
   recorder.onstop = () => send(new Blob(chunks, { type: "audio/webm" }));
   recorder.start();
+}
+
+// Abandons a speculative recording once the sound that triggered it turns
+// out not to have been speech (vad.isPending() fell back to false without
+// ever reaching speech-start). onstop is detached FIRST so stopping the
+// recorder can never POST audio for a turn the caller never actually took.
+function discardRecording() {
+  if (!recorder) return;
+  recorder.onstop = null;
+  if (recorder.state === "recording") recorder.stop();
+  recorder = null;
 }
 
 function stopRecordingAndSend() {

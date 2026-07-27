@@ -191,3 +191,75 @@ test("a sustained gap still resets a nascent turn", () => {
   assert.equal(vad.process(LOUD, 450), null);
   assert.equal(vad.process(LOUD, 500), null);   // only 50ms accumulated
 });
+
+// --- speculative recording: isPending() query -------------------------------
+//
+// Recording that waits for CONFIRMED speech (speech-start) always clips the
+// first ~200-300ms of an utterance, because that is exactly how long
+// minSpeechMs makes the caller wait before confirmation. The fix: start
+// capturing at the very first loud frame and throw the recording away if the
+// sound never turns into real speech. process()'s single-value-per-call
+// contract cannot carry that extra signal without breaking every existing
+// test that asserts null/speech-start on those frames (tried and reverted —
+// see the report), so instead of a new return value this exposes the
+// detector's already-tracked nascent-turn state as a read-only query that
+// app.js can poll independently of process()'s return value.
+
+test("isPending() is false on a fresh detector", () => {
+  const vad = createEnergyVAD(OPTS);
+  assert.equal(vad.isPending(), false);
+});
+
+test("isPending() is true after one loud frame", () => {
+  const vad = createEnergyVAD(OPTS);
+  vad.process(LOUD, 0);
+  assert.equal(vad.isPending(), true);
+});
+
+test("isPending() stays true across a dip shorter than dipToleranceMs", () => {
+  const vad = createEnergyVAD(OPTS);
+  vad.process(LOUD, 0);
+  assert.equal(vad.isPending(), true);
+  vad.process(QUIET, 50);          // 50ms dip, under the 150ms tolerance
+  assert.equal(vad.isPending(), true);
+  vad.process(LOUD, 100);
+  assert.equal(vad.isPending(), true);
+});
+
+test("isPending() is false once process() returns speech-start", () => {
+  const vad = createEnergyVAD(OPTS);
+  vad.process(LOUD, 0);
+  assert.equal(vad.isPending(), true);
+  assert.equal(vad.process(LOUD, 200), "speech-start");
+  assert.equal(vad.isPending(), false);
+});
+
+test("isPending() is false after a nascent turn is abandoned by a sustained gap", () => {
+  const vad = createEnergyVAD(OPTS);
+  vad.process(LOUD, 0);
+  assert.equal(vad.isPending(), true);
+  for (let t = 50; t <= 400; t += 50) {
+    vad.process(QUIET, t);
+  }
+  // The gap exceeded dipToleranceMs well before minSpeechMs elapsed, so the
+  // nascent turn was reset without ever confirming.
+  assert.equal(vad.isPending(), false);
+});
+
+test("isPending() is never true during continuous silence from the start", () => {
+  const vad = createEnergyVAD(OPTS);
+  for (let t = 0; t < 5000; t += 50) {
+    vad.process(QUIET, t);
+    assert.equal(vad.isPending(), false);
+  }
+});
+
+test("strict mode: isPending() only becomes true above bargeInThreshold, not merely above threshold", () => {
+  const vad = createEnergyVAD(OPTS);
+  // 0.05 is above OPTS.threshold (0.02) but below the default bargeInThreshold
+  // (0.08): in strict mode this must not count as the start of a nascent turn.
+  vad.process(0.05, 0, true);
+  assert.equal(vad.isPending(), false);
+  vad.process(0.5, 50, true);   // above bargeInThreshold
+  assert.equal(vad.isPending(), true);
+});
