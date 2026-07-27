@@ -73,7 +73,7 @@ Every boundary is deliberate:
 - **Tools know nothing about the LLM.** They're pure functions over a SQLite
   connection, so they're unit-testable with an in-memory database.
 - **The agent knows nothing about the provider.** It talks to an `LLMClient`
-  protocol, so the entire **256-test** suite runs offline against a `FakeLLM` — no
+  protocol, so the entire **291-test** suite runs offline against a `FakeLLM` — no
   network, no API key, no cost.
 - **The agent knows nothing about audio.** That's why the voice layer (Groq Whisper
   in, browser speech-synthesis out) was an *additive* change that never touched the
@@ -305,15 +305,18 @@ $env:PYTHONPATH = "src"; python -m voicedesk.cli
 ```powershell
 $env:PYTHONPATH = "src"; python -m voicedesk.voice
 ```
-Open <http://127.0.0.1:8000>, hold the button, and speak. The browser records your
-voice, Groq Whisper transcribes it, the same agent takes the action, and the browser
-speaks the reply back. Each turn shows its latency breakdown (stt / agent / total).
+Open <http://127.0.0.1:8000> and simply speak. The app detects when you stop talking
+and sends your input to Groq Whisper for transcription. The agent takes the action and
+the browser speaks the reply back. You can interrupt the agent mid-sentence at any time,
+and the app includes a "Hold to talk" toggle if you prefer push-to-talk mode. Each turn
+shows its latency breakdown (stt / agent / total).
 
 Use Chrome or Edge — it needs `MediaRecorder` and the Web Speech API.
 
-### Run the tests (256, fully offline — no API key needed)
+### Run the tests (291 Python + 24 JavaScript, fully offline — no API key needed)
 ```powershell
 $env:PYTHONPATH = "src"; python -m pytest -q
+node --test tests/js/*.test.mjs
 ```
 
 ### Run the evals (needs an API key; run from the repo root)
