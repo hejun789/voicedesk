@@ -95,14 +95,17 @@ function startVadLoop() {
   const buf = new Float32Array(analyser.fftSize);
   vad = createEnergyVAD();
   const tick = () => {
-    analyser.getFloatTimeDomainData(buf);
-    let sum = 0;
-    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-    const rms = Math.sqrt(sum / buf.length);
-    const event = vad.process(rms, performance.now());
-    if (event === "speech-start") dispatch("SPEECH_START");
-    else if (event === "speech-end") dispatch("SPEECH_END");
-    rafId = requestAnimationFrame(tick);
+    try {
+      analyser.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      const rms = Math.sqrt(sum / buf.length);
+      const event = vad.process(rms, performance.now());
+      if (event === "speech-start") dispatch("SPEECH_START");
+      else if (event === "speech-end") dispatch("SPEECH_END");
+    } finally {
+      rafId = requestAnimationFrame(tick);
+    }
   };
   rafId = requestAnimationFrame(tick);
 }
@@ -124,6 +127,9 @@ function startRecording() {
 
 function stopRecordingAndSend() {
   if (recorder && recorder.state === "recording") recorder.stop();
+  // Nothing to stop (e.g. the mic track ended and MediaRecorder self-stopped):
+  // without this the machine would sit in THINKING forever and the call is dead.
+  else dispatch("TURN_ABORTED");
 }
 
 // --- server round trip -----------------------------------------------------
@@ -203,9 +209,11 @@ function speak(text, replyLang) {
 }
 
 function cancelSpeech() {
-  // Cancel fires no onend, so heardChars keeps whatever the last boundary was.
-  // If no boundary ever fired, treat it as "heard nothing".
-  if (heardChars === null && spokenText) heardChars = 0;
+  // cancel() fires 'error', not 'onend', so heardChars keeps whatever the last
+  // boundary reported. If no boundary ever fired we genuinely do not know how
+  // much the caller heard — Chrome's network-backed voices (the zh-CN default)
+  // never fire them — so we send nothing and leave history untouched rather
+  // than guessing zero, which would delete the whole reply.
   window.speechSynthesis.cancel();
 }
 

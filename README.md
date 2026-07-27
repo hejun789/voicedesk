@@ -305,11 +305,11 @@ $env:PYTHONPATH = "src"; python -m voicedesk.cli
 ```powershell
 $env:PYTHONPATH = "src"; python -m voicedesk.voice
 ```
-Open <http://127.0.0.1:8000> and simply speak. The app detects when you stop talking
-and sends your input to Groq Whisper for transcription. The agent takes the action and
-the browser speaks the reply back. You can interrupt the agent mid-sentence at any time,
-and the app includes a "Hold to talk" toggle if you prefer push-to-talk mode. Each turn
-shows its latency breakdown (stt / agent / total).
+Open <http://127.0.0.1:8000>, click "Start call", and speak. The app detects when you
+stop talking and sends your input to Groq Whisper for transcription. The agent takes the
+action and the browser speaks the reply back. You can interrupt the agent mid-sentence
+while it's speaking, and the app includes a "Hold to talk" toggle if you prefer
+push-to-talk mode. Each turn shows its latency breakdown (stt / agent / total).
 
 Use Chrome or Edge — it needs `MediaRecorder` and the Web Speech API.
 
