@@ -52,6 +52,22 @@ def build_session_store(llm_factory, today=None) -> SessionStore:
     ))
 
 
+_WILDCARD_HOSTS = {"0.0.0.0", "::"}
+
+
+def browsable_url(host: str, port: int) -> str:
+    """A URL the reader can actually click.
+
+    The server binds 0.0.0.0 so containers and hosted platforms can reach it,
+    but that address means "every interface", not a destination — a browser
+    handed it answers ERR_ADDRESS_INVALID. Print the loopback address instead
+    so the startup line is a working link.
+    """
+    if host in _WILDCARD_HOSTS:
+        host = "127.0.0.1"
+    return f"http://{host}:{port}"
+
+
 def main() -> None:
     load_dotenv()
     if not os.environ.get("GROQ_API_KEY"):
@@ -68,7 +84,7 @@ def main() -> None:
 
     host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "7860"))
-    print(f"VoiceDesk is listening on http://{host}:{port}", flush=True)
+    print(f"VoiceDesk is listening on {browsable_url(host, port)}", flush=True)
     uvicorn.run(app, host=host, port=port)
 
 

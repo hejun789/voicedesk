@@ -1,4 +1,4 @@
-from voicedesk.voice.__main__ import fresh_db, build_session_store
+from voicedesk.voice.__main__ import fresh_db, build_session_store, browsable_url
 from voicedesk.llm import FakeLLM
 from voicedesk.tools import book, lookup_appt
 
@@ -31,3 +31,20 @@ def test_chinese_session_gets_a_chinese_prompt():
     store = build_session_store(lambda: FakeLLM([]))
     agent = store.get_or_create("v", "zh")
     assert "简体中文" in agent.messages[0]["content"]
+
+
+def test_browsable_url_rewrites_the_wildcard_bind_address():
+    # 0.0.0.0 means "listen on every interface"; it is not a destination a
+    # browser can connect to (Chrome answers ERR_ADDRESS_INVALID). Printing it
+    # verbatim sends the reader to a dead link, so show the loopback address
+    # they can actually open.
+    assert browsable_url("0.0.0.0", 7860) == "http://127.0.0.1:7860"
+
+
+def test_browsable_url_rewrites_the_ipv6_wildcard_too():
+    assert browsable_url("::", 7860) == "http://127.0.0.1:7860"
+
+
+def test_browsable_url_leaves_a_real_host_alone():
+    assert browsable_url("127.0.0.1", 8000) == "http://127.0.0.1:8000"
+    assert browsable_url("example.com", 80) == "http://example.com:80"
