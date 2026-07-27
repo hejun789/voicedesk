@@ -182,8 +182,18 @@ function speak(text, replyLang) {
   utterance.onboundary = (e) => {
     if (typeof e.charIndex === "number") heardChars = e.charIndex;
   };
-  utterance.onend = () => dispatch("TTS_END");
-  utterance.onerror = () => dispatch("TTS_END");
+  // Natural completion (not a barge-in): the caller heard the whole reply,
+  // so clear the interruption-tracking state before the next turn starts.
+  utterance.onend = () => {
+    heardChars = null;
+    spokenText = "";
+    dispatch("TTS_END");
+  };
+  utterance.onerror = () => {
+    heardChars = null;
+    spokenText = "";
+    dispatch("TTS_END");
+  };
   window.speechSynthesis.speak(utterance);
 }
 
@@ -211,6 +221,12 @@ document.querySelectorAll(".mode").forEach((btn) => {
     document.querySelectorAll(".mode").forEach((b) =>
       b.classList.toggle("active", b === btn));
     cancelSpeech();
+    if (recorder && recorder.state === "recording") {
+      // Abandon this turn: detach onstop first so stopping the recorder does
+      // NOT trigger send() for audio the caller no longer intends to submit.
+      recorder.onstop = null;
+      recorder.stop();
+    }
     stopVadLoop();
     dispatch("DISARM");
     state = initialState(mode);
