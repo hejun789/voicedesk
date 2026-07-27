@@ -14,14 +14,54 @@ export function createEnergyVAD({
   bargeInThreshold = 0.08,   // strict-mode RMS floor while the agent is speaking
   bargeInMinSpeechMs = 300,  // strict-mode sustain time while the agent is speaking
   dipToleranceMs = 150,      // a gap this short does not reset a nascent turn
+  echoFloorAlpha = 0.02,     // smoothing factor for the strict-mode ambient estimate
+  bargeInMargin = 2.0,       // a real interruption must clear the ambient estimate by this factor
 } = {}) {
   let speaking = false;
   let loudSince = null;
   let quietSince = null;
 
+  // Running estimate of the ambient (echo) level while strict, so a loud
+  // voice (e.g. Chrome's network-backed zh-CN TTS, which plays louder and
+  // bypasses the pipeline's echo cancellation) doesn't get mistaken for a
+  // caller barging in just because it clears the fixed bargeInThreshold.
+  // null means "no estimate yet" -- distinct from 0, and the signal that a
+  // fresh interruption window is starting.
+  let echoFloor = null;
+  let wasStrict = false;
+
   return {
     process(level, nowMs, strict = false) {
-      const startThreshold = strict ? bargeInThreshold : threshold;
+      if (strict) {
+        // Only track ambient/echo while no turn is nascent. Once a candidate
+        // turn starts accumulating (loudSince set), whatever is making the
+        // noise is potentially speech, not ambient, so the estimate freezes
+        // at whatever it was the instant the turn began. Without this, a
+        // caller's own sustained voice would keep dragging the estimate (and
+        // therefore the requirement) up toward itself while their
+        // interruption was still accumulating toward bargeInMinSpeechMs,
+        // raising the bar out from under them mid-word -- found via the
+        // real animation-frame cadence (~16ms), where enough update calls
+        // land inside the 300ms sustain window for the drift to matter.
+        if (loudSince === null) {
+          // Slow adaptation is deliberate and load-bearing: steady echo
+          // pulls the floor up to its own level within about a second, but
+          // a sudden loud voice clears the margin well before the floor
+          // can catch up.
+          echoFloor = echoFloor === null
+            ? level
+            : echoFloor + (level - echoFloor) * echoFloorAlpha;
+        }
+      } else if (wasStrict) {
+        // The interruption window just closed -- start the next one fresh
+        // rather than inheriting a stale estimate.
+        echoFloor = null;
+      }
+      wasStrict = strict;
+
+      const startThreshold = strict
+        ? Math.max(bargeInThreshold, echoFloor * bargeInMargin)
+        : threshold;
       const startMinSpeechMs = strict ? bargeInMinSpeechMs : minSpeechMs;
 
       if (!speaking) {
