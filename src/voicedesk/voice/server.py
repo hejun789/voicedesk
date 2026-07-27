@@ -14,6 +14,24 @@ from voicedesk.voice.stt import STTError, is_silence_hallucination
 
 STATIC_DIR = Path(__file__).parent / "static"
 
+# The front end is a handful of KB of hand-written JS with no build step and no
+# content hash in its filename, so a cached copy is indistinguishable from a
+# current one. Without this, a returning visitor keeps running the JavaScript
+# from before the last deploy — and a developer testing a fix locally sees the
+# OLD code while believing the fix failed. That cost a full round of
+# false-negative manual testing on this project. Revalidating a few KB per load
+# is the right trade.
+_NO_STORE = "no-store, no-cache, must-revalidate"
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """StaticFiles that forbids browser caching. See _NO_STORE above."""
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = _NO_STORE
+        return response
+
 DIDNT_CATCH = "Sorry, I didn't catch that. Could you say that again?"
 STT_FAILED = (
     "Sorry, I'm having trouble hearing you. "
@@ -74,7 +92,8 @@ def create_app(stt, sessions, lock=None, limiter=None) -> FastAPI:
 
     @app.get("/")
     def index():
-        return FileResponse(STATIC_DIR / "index.html")
+        return FileResponse(STATIC_DIR / "index.html",
+                            headers={"Cache-Control": _NO_STORE})
 
     @app.post("/turn")
     async def turn(
@@ -164,5 +183,5 @@ def create_app(stt, sessions, lock=None, limiter=None) -> FastAPI:
             "lang": lang,
         }
 
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    app.mount("/static", NoCacheStaticFiles(directory=STATIC_DIR), name="static")
     return app
