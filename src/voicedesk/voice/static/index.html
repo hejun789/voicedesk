@@ -23,16 +23,28 @@
     .lang { flex: 1; padding: .6rem; border-radius: 8px; border: 1px solid #ccc;
             background: #fff; cursor: pointer; font-size: .95rem; }
     .lang.active { background: #1e40af; border-color: #1e40af; color: #fff; }
+    #modes { display: flex; gap: .5rem; margin-bottom: 1rem; }
+    .mode { flex: 1; padding: .5rem; border-radius: 8px; border: 1px solid #ccc;
+            background: #fff; cursor: pointer; font-size: .85rem; }
+    .mode.active { background: #475569; border-color: #475569; color: #fff; }
+    #talk.listening { background: #f0fdf4; border-color: #16a34a; color: #15803d; }
+    #talk.speaking { background: #fefce8; border-color: #ca8a04; color: #a16207; }
   </style>
 </head>
 <body>
   <h1>VoiceDesk — BrightSmile Dental</h1>
-  <p class="hint">Hold the button, speak, then release. Try:
+  <p class="hint">Just start speaking — the receptionist listens, and you can
+    interrupt it any time. Try:
     <em>"Book me Monday July 13th 2026 at 9am, Jane Doe, 5551234, for a cleaning."</em></p>
 
   <div id="langs">
     <button class="lang active" data-lang="en">English</button>
     <button class="lang" data-lang="zh">中文</button>
+  </div>
+
+  <div id="modes">
+    <button class="mode active" data-mode="hands-free">Hands-free</button>
+    <button class="mode" data-mode="ptt">Hold to talk</button>
   </div>
 
   <button id="talk">Hold to talk</button>
@@ -45,6 +57,6 @@
     <div id="timings"></div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script type="module" src="/static/app.js"></script>
 </body>
 </html>
