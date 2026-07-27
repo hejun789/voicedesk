@@ -280,12 +280,27 @@ test("isPending() is never true during continuous silence from the start", () =>
 });
 
 test("strict mode: isPending() only becomes true above bargeInThreshold, not merely above threshold", () => {
+  // The grace window (bargeInGraceMs, default 600ms) suppresses ALL turns
+  // for a moment after strict goes true, so this test's checks must happen
+  // past that window -- otherwise it would fail for the wrong reason (grace
+  // suppression) instead of testing what it is actually about (the
+  // bargeInThreshold gate vs. the ordinary threshold). Do not "simplify"
+  // this back to checking at t=0/t=50 -- that reintroduces the exact
+  // conflict the grace window was added to resolve.
+  //
+  // The prelude uses a near-silent level (0.001), not a moderate one like
+  // other strict tests' preludes, because this test specifically needs the
+  // adaptive floor to stay low enough that echoFloor * bargeInMargin stays
+  // under bargeInThreshold (0.08) -- otherwise the test would end up
+  // exercising the adaptive floor path instead of the absolute-minimum gate
+  // it exists to check.
   const vad = createEnergyVAD(OPTS);
+  for (let t = 0; t < 700; t += 50) vad.process(0.001, t, true);   // past the 600ms grace window
   // 0.05 is above OPTS.threshold (0.02) but below the default bargeInThreshold
   // (0.08): in strict mode this must not count as the start of a nascent turn.
-  vad.process(0.05, 0, true);
+  vad.process(0.05, 700, true);
   assert.equal(vad.isPending(), false);
-  vad.process(0.5, 50, true);   // above bargeInThreshold
+  vad.process(0.5, 750, true);   // above bargeInThreshold
   assert.equal(vad.isPending(), true);
 });
 
@@ -404,4 +419,146 @@ test("adaptive floor: freezes once a turn is nascent, so the caller's own sustai
     if (e) events.push(e);
   }
   assert.deepEqual(events, ["speech-start"]);
+});
+
+// --- barge-in grace window (agent-interrupts-itself loop) -------------------
+//
+// Live testing (Chinese voice, speakers on) showed the agent interrupting
+// itself the instant it began speaking, then recording and replying to its
+// own voice in a loop. Cause: there is a real delay between the browser being
+// told to speak and audio reaching the speakers. `strict` becomes true the
+// moment speech is requested, so the echo floor used to initialise against
+// the SILENCE of that gap and settle near zero -- collapsing the start
+// requirement to the bare bargeInThreshold. When the agent's own loud audio
+// arrived milliseconds later it cleared that trivial requirement easily,
+// started a nascent turn, and FROZE the floor at its uselessly-low value.
+// The fix: for bargeInGraceMs after strict goes true, keep learning the
+// floor but never let a turn start, and keep clearing any nascent turn each
+// frame so echo can't freeze the floor low before it has had time to learn
+// the real level. All of these tests use ~16ms steps (matching real
+// animation-frame cadence) because the floor's convergence rate depends on
+// how many process() calls land inside the 600ms window, not on wall time
+// alone -- collapsing these to 50ms steps would understate how many updates
+// the floor gets and give the wrong answer.
+
+test("grace window: onset silence-then-echo during the window never fires speech-start (live failure reproduced)", () => {
+  const vad = createEnergyVAD(OPTS);
+  const events = [];
+  // One frame of near-silence -- the audio-output delay -- then the agent's
+  // own loud echo arrives and sustains well past a second.
+  let e = vad.process(0.001, 0, true);
+  if (e) events.push(e);
+  for (let t = 16; t < 1500; t += 16) {
+    e = vad.process(0.3, t, true);
+    if (e) events.push(e);
+  }
+  assert.deepEqual(events, []);
+});
+
+test("grace window: the floor genuinely learns the echo level, so speech-start still never fires long after the window", () => {
+  const vad = createEnergyVAD(OPTS);
+  const events = [];
+  let e = vad.process(0.001, 0, true);
+  if (e) events.push(e);
+  // Keep feeding the identical 0.3 echo for 3 full seconds, well past
+  // bargeInGraceMs (600ms). The floor should have adapted to ~0.3 by then,
+  // putting the requirement (~0.6, via bargeInMargin) permanently out of the
+  // echo's reach -- not just suppressed for the grace window's duration.
+  for (let t = 16; t < 3000; t += 16) {
+    e = vad.process(0.3, t, true);
+    if (e) events.push(e);
+  }
+  assert.deepEqual(events, []);
+});
+
+test("grace window: a real interruption after the window elapses still fires speech-start", () => {
+  const vad = createEnergyVAD(OPTS);
+  // Onset (silence then echo), left running well past the grace window so
+  // the floor settles on the echo level, exactly as a real reply would.
+  vad.process(0.001, 0, true);
+  for (let t = 16; t < 800; t += 16) {
+    vad.process(0.3, t, true);
+  }
+  // Now the caller speaks over the echo, sustained past bargeInMinSpeechMs.
+  const events = [];
+  for (let t = 800; t < 1800; t += 16) {
+    const e = vad.process(0.9, t, true);
+    if (e) events.push(e);
+  }
+  assert.deepEqual(events, ["speech-start"]);
+});
+
+test("grace window: a genuinely loud voice cannot start a turn during the window, but the same level fires once the window has passed", () => {
+  // This documents the deliberate trade this fix makes: a real interruption
+  // that happens to land inside the first 600ms of a reply is suppressed.
+  const vad = createEnergyVAD(OPTS);
+  const duringWindow = [];
+  let pendingDuringLoudTail = false;
+  for (let t = 0; t < 600; t += 16) {
+    // Near-silence for most of the window, then a level far above any
+    // plausible requirement for its final frames -- still inside the window.
+    const level = t < 550 ? 0.001 : 0.9;
+    const e = vad.process(level, t, true);
+    if (e) duringWindow.push(e);
+    if (t >= 550 && vad.isPending()) pendingDuringLoudTail = true;
+  }
+  assert.deepEqual(duringWindow, []);
+  // The loud tail must not even be allowed to accumulate toward a nascent
+  // turn -- otherwise it would freeze the floor at its still-low value the
+  // instant the window ends, defeating the fix. (Without this check the test
+  // above can pass "by accident": a turn that started accumulating mid-window
+  // can still cross bargeInMinSpeechMs after the window boundary, producing
+  // the same eventual speech-start for the wrong reason.)
+  assert.equal(pendingDuringLoudTail, false);
+
+  // The window has now passed. The identical loud level, sustained, does
+  // fire once it has had bargeInMinSpeechMs to accumulate.
+  const afterWindow = [];
+  for (let t = 600; t < 1800; t += 16) {
+    const e = vad.process(0.9, t, true);
+    if (e) afterWindow.push(e);
+  }
+  assert.deepEqual(afterWindow, ["speech-start"]);
+});
+
+test("grace window: resets on every rising edge of strict, so a second reply gets a fresh window", () => {
+  const vad = createEnergyVAD(OPTS);
+  // First strict period: brief, quiet, then drops back to non-strict.
+  vad.process(0.001, 0, true);
+  for (let t = 16; t < 100; t += 16) vad.process(0.001, t, true);
+  vad.process(0.001, 100, false);   // interruption window closes
+
+  // Second strict period starts at t=116 -- a fresh rising edge. Keep the
+  // floor low, then bring in a clean, absolute-floor-clearing voice at
+  // t=600 (already >= 600ms of *absolute* time since the very first rising
+  // edge at t=0, but only 484ms since the SECOND rising edge at t=116). If
+  // the window failed to reset and kept measuring from t=0, this voice would
+  // be free to start accumulating immediately and would fire by t=904 (300ms
+  // after t=600). With a correctly reset window (grace lasts until t=716),
+  // it cannot start accumulating until t=716 and so cannot fire before
+  // roughly t=1016. Asserting null through t=1016 catches a non-reset bug.
+  vad.process(0.001, 116, true);
+  for (let t = 132; t < 600; t += 16) vad.process(0.001, t, true);
+  const events = [];
+  for (let t = 600; t <= 1016; t += 16) {
+    const e = vad.process(0.9, t, true);
+    if (e) events.push(e);
+  }
+  assert.deepEqual(events, []);
+
+  // ...and it does fire shortly after, proving the voice was genuinely
+  // capable of triggering -- the emptiness above wasn't a fluke.
+  let fired = null;
+  for (let t = 1032; t < 2000; t += 16) {
+    const e = vad.process(0.9, t, true);
+    if (e) { fired = e; break; }
+  }
+  assert.equal(fired, "speech-start");
+});
+
+test("grace window: non-strict mode is completely unaffected", () => {
+  const vad = createEnergyVAD(OPTS);
+  assert.equal(vad.process(LOUD, 0), null);
+  assert.equal(vad.process(LOUD, 100), null);   // still under 200ms
+  assert.equal(vad.process(LOUD, 200), "speech-start");
 });

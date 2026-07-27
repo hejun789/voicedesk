@@ -16,6 +16,7 @@ export function createEnergyVAD({
   dipToleranceMs = 150,      // a gap this short does not reset a nascent turn
   echoFloorAlpha = 0.02,     // smoothing factor for the strict-mode ambient estimate
   bargeInMargin = 2.0,       // a real interruption must clear the ambient estimate by this factor
+  bargeInGraceMs = 600,      // no interruption may START this long after strict goes true
 } = {}) {
   let speaking = false;
   let loudSince = null;
@@ -30,9 +31,22 @@ export function createEnergyVAD({
   let echoFloor = null;
   let wasStrict = false;
 
+  // Timestamp of the rising edge of strict (when the agent started
+  // speaking), so the grace window below can be measured from it. There is
+  // a real delay between the browser being told to speak and audio actually
+  // reaching the speakers -- strict becomes true at the moment speech is
+  // requested, not when sound arrives. Without a grace window the echo floor
+  // initialises against the SILENCE of that gap and settles near zero,
+  // collapsing the start requirement to bargeInThreshold; the agent's own
+  // audio then arrives, clears that trivial requirement, starts a nascent
+  // turn, and freezes the floor at its uselessly-low value -- the agent
+  // interrupts itself. Found via live mic testing with the zh-CN voice.
+  let strictSince = null;
+
   return {
     process(level, nowMs, strict = false) {
       if (strict) {
+        if (!wasStrict) strictSince = nowMs;
         // Only track ambient/echo while no turn is nascent. Once a candidate
         // turn starts accumulating (loudSince set), whatever is making the
         // noise is potentially speech, not ambient, so the estimate freezes
@@ -51,6 +65,17 @@ export function createEnergyVAD({
           echoFloor = echoFloor === null
             ? level
             : echoFloor + (level - echoFloor) * echoFloorAlpha;
+        }
+        if (nowMs - strictSince < bargeInGraceMs) {
+          // Still within the post-onset grace window: the floor above keeps
+          // learning the real echo level (that's the whole point), but no
+          // turn may start, and any turn that started accumulating this
+          // frame must be cleared -- otherwise the freeze rule above would
+          // lock the floor in at exactly the low value this window exists
+          // to avoid.
+          loudSince = null;
+          wasStrict = strict;
+          return null;
         }
       } else if (wasStrict) {
         // The interruption window just closed -- start the next one fresh
