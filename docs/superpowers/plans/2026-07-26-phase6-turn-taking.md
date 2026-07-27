@@ -59,7 +59,7 @@ Create `tests/test_agent_truncate.py`:
 
 ```python
 from voicedesk.agent import Agent
-from voicedesk.llm import FakeLLM, Message, ToolCall
+from voicedesk.llm import FakeLLM, Message
 
 
 def _agent_with_reply(db, reply: str) -> Agent:
