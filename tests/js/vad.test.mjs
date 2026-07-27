@@ -488,9 +488,26 @@ test("grace window: a real interruption after the window elapses still fires spe
   assert.deepEqual(events, ["speech-start"]);
 });
 
-test("grace window: a genuinely loud voice cannot start a turn during the window, but the same level fires once the window has passed", () => {
-  // This documents the deliberate trade this fix makes: a real interruption
-  // that happens to land inside the first 600ms of a reply is suppressed.
+test("grace window: loud audio inside the window calibrates the floor as echo -- it does not fire even once the window has passed", () => {
+  // DELIBERATE RULE CHANGE, decided by the owner after reviewing live
+  // evidence (not a test-timing accident -- see peakhold-echosafe-report.md
+  // for the full reasoning). This test used to assert the opposite: that a
+  // genuinely loud voice landing inside the grace window was suppressed
+  // there but still fired shortly after the window closed. Under peak-hold
+  // that can no longer hold, and the owner concluded it *should* not hold
+  // either: from the detector's point of view, "the caller started talking
+  // late in the grace window" and "the reply's own echo arrived late in the
+  // window" are the SAME signal -- both are loud sound landing during the
+  // audio-output latency gap that the grace window exists to cover. We
+  // cannot tell them apart, and the self-talk loop this whole mechanism
+  // exists to prevent happens on EVERY reply, while a caller interrupting
+  // within the first 600ms of a reply is rare. So the rule is: loud audio
+  // observed during the grace window is always assumed to be echo and
+  // calibrates the peak-hold floor -- even on the rare occasion it was
+  // actually a real voice. That voice must then clear its own level by
+  // bargeInMargin to register, which a sustained, constant-volume voice
+  // cannot do. (The residual cost of this trade is bounded and temporary --
+  // see the recovery test below.)
   const vad = createEnergyVAD(OPTS);
   const duringWindow = [];
   let pendingDuringLoudTail = false;
@@ -503,60 +520,196 @@ test("grace window: a genuinely loud voice cannot start a turn during the window
     if (t >= 550 && vad.isPending()) pendingDuringLoudTail = true;
   }
   assert.deepEqual(duringWindow, []);
-  // The loud tail must not even be allowed to accumulate toward a nascent
-  // turn -- otherwise it would freeze the floor at its still-low value the
-  // instant the window ends, defeating the fix. (Without this check the test
-  // above can pass "by accident": a turn that started accumulating mid-window
-  // can still cross bargeInMinSpeechMs after the window boundary, producing
-  // the same eventual speech-start for the wrong reason.)
+  // This assertion still holds and still guards a real, distinct bug: the
+  // loud tail must not be allowed to accumulate toward a nascent turn during
+  // the window. If it did, the freeze rule would lock the floor at its
+  // still-low PRE-tail value instead of peak-hold picking up the tail
+  // itself -- reopening the exact self-talk loop this file exists to
+  // prevent (the floor would stay near the near-silence level, not the
+  // echo's real level).
   assert.equal(pendingDuringLoudTail, false);
 
-  // The window has now passed. The identical loud level, sustained, does
-  // fire once it has had bargeInMinSpeechMs to accumulate.
+  // The window has now passed. Peak-hold locked the floor at 0.9 -- the
+  // loudest thing observed during the window, whether that was echo or a
+  // real voice. The identical 0.9 level, sustained past the window, now
+  // reads as that same calibrated echo continuing and never fires -- even
+  // though this is exactly the input a genuine interrupting caller would
+  // produce at constant volume.
   const afterWindow = [];
   for (let t = 600; t < 1800; t += 16) {
     const e = vad.process(0.9, t, true);
     if (e) afterWindow.push(e);
   }
-  assert.deepEqual(afterWindow, ["speech-start"]);
+  assert.deepEqual(afterWindow, []);
 });
 
-test("grace window: resets on every rising edge of strict, so a second reply gets a fresh window", () => {
+test("grace window: resets on every rising edge of strict, so a second reply's window is not inherited from the first", () => {
+  // Also exercises the rule above (loud audio inside an active grace window
+  // calibrates the floor and does not fire, even afterward): the loud voice
+  // below starts at t=600, which is INSIDE the second reply's own window
+  // (t=116 to t=716) if the window genuinely reset to the second rising
+  // edge, so it should never fire. If the window had instead failed to
+  // reset -- incorrectly still measuring grace from the FIRST rising edge
+  // at t=0, making it look closed by t=600 -- this same voice would have
+  // been evaluated on the ordinary (non-grace) path from the moment it
+  // started, against the tiny ambient floor left over from the quiet
+  // prelude, and would have fired quickly. Never firing is therefore proof
+  // the window reset to the second edge (t=116), not the first.
   const vad = createEnergyVAD(OPTS);
   // First strict period: brief, quiet, then drops back to non-strict.
   vad.process(0.001, 0, true);
   for (let t = 16; t < 100; t += 16) vad.process(0.001, t, true);
   vad.process(0.001, 100, false);   // interruption window closes
 
-  // Second strict period starts at t=116 -- a fresh rising edge. Keep the
-  // floor low, then bring in a clean, absolute-floor-clearing voice at
-  // t=600 (already >= 600ms of *absolute* time since the very first rising
-  // edge at t=0, but only 484ms since the SECOND rising edge at t=116). If
-  // the window failed to reset and kept measuring from t=0, this voice would
-  // be free to start accumulating immediately and would fire by t=904 (300ms
-  // after t=600). With a correctly reset window (grace lasts until t=716),
-  // it cannot start accumulating until t=716 and so cannot fire before
-  // roughly t=1016. Asserting null through t=1016 catches a non-reset bug.
+  // Second strict period starts at t=116 -- a fresh rising edge, with its
+  // own grace window running to t=716.
   vad.process(0.001, 116, true);
   for (let t = 132; t < 600; t += 16) vad.process(0.001, t, true);
   const events = [];
-  for (let t = 600; t <= 1016; t += 16) {
+  for (let t = 600; t < 1800; t += 16) {
     const e = vad.process(0.9, t, true);
     if (e) events.push(e);
   }
   assert.deepEqual(events, []);
+});
 
-  // ...and it does fire shortly after, proving the voice was genuinely
-  // capable of triggering -- the emptiness above wasn't a fluke.
-  let fired = null;
-  for (let t = 1032; t < 2000; t += 16) {
-    const e = vad.process(0.9, t, true);
-    if (e) { fired = e; break; }
+test("grace window: the cost of treating a real interruption as echo is temporary -- the floor decays and a later interruption at normal volume does fire", () => {
+  // Bounds the trade made by the two tests above: locking onto a loud voice
+  // during the grace window does not deafen the detector to that caller
+  // forever. Once the caller stops and only ordinary (quieter) echo
+  // continues, the existing post-grace EMA -- unchanged by this fix -- pulls
+  // the floor back down, and a fresh interruption at a normal, unremarkable
+  // volume eventually clears the (now much lower) requirement again.
+  const vad = createEnergyVAD(OPTS);
+  // Grace window: a loud voice (0.9) locks the peak-hold floor high.
+  vad.process(0.001, 0, true);
+  for (let t = 16; t < 600; t += 16) vad.process(0.9, t, true);
+
+  // Past the window: the caller has stopped: only steady, ordinary echo
+  // (0.05) continues. Confirmed empirically that nothing fires during this
+  // entire decay period -- the floor is still working its way down from 0.9.
+  const duringDecay = [];
+  for (let t = 600; t < 4000; t += 16) {
+    const e = vad.process(0.05, t, true);
+    if (e) duringDecay.push(e);
   }
-  assert.equal(fired, "speech-start");
+  assert.deepEqual(duringDecay, []);
+
+  // A fresh interruption at a normal, unremarkable volume (0.3 -- nowhere
+  // near the 0.9 that calibrated the floor) now DOES fire, once sustained
+  // past bargeInMinSpeechMs. This is the recovery: the same caller, or a
+  // different one, is not permanently locked out for the rest of the reply.
+  const events = [];
+  for (let t = 4000; t < 6000; t += 16) {
+    const e = vad.process(0.3, t, true);
+    if (e) events.push(e);
+  }
+  assert.deepEqual(events, ["speech-start"]);
 });
 
 test("grace window: non-strict mode is completely unaffected", () => {
+  const vad = createEnergyVAD(OPTS);
+  assert.equal(vad.process(LOUD, 0), null);
+  assert.equal(vad.process(LOUD, 100), null);   // still under 200ms
+  assert.equal(vad.process(LOUD, 200), "speech-start");
+});
+
+// --- peak-hold during the grace window (self-interruption loop) ------------
+//
+// The EMA-based floor above only reaches ~52% of the true echo level by the
+// end of a 600ms grace window at ~60fps cadence (1 - 0.98^36), because it is
+// initialised from the first frame -- silence, since audio output lags the
+// request to speak -- and then only creeps toward the real echo level.
+// Steady echo at 0.3 lands the floor near 0.155 and the requirement
+// (floor * bargeInMargin) near 0.31 -- level with the echo itself, so a
+// fluctuation clears it, starts a nascent turn, freezes the floor at that
+// too-low value, and the echo sustains past bargeInMinSpeechMs and fires.
+// Confirmed live with the (louder) zh-CN voice. Fix: track the PEAK level
+// while inside the grace window instead of an EMA, so the floor equals the
+// loudest echo actually observed by the time the window ends. After the
+// window, EMA resumes unchanged so the floor can still drift with changing
+// conditions.
+
+// A perfectly constant echo turns out not to reproduce the failure: with
+// echoFloorAlpha's ~52% grace-window convergence and bargeInMargin 2.0, the
+// EMA requirement is asymptotically >= the level itself for ANY constant
+// echo (52% * 2 > 100%), so a mathematically flat signal never quite clears
+// its own (still-rising) requirement. Real echo is not perfectly flat,
+// though -- it has natural variance around its mean -- and that is exactly
+// what the defect writeup means by "a fluctuation above it starts a nascent
+// turn": a brief rise clears the not-yet-converged requirement, freezes the
+// floor at that too-low value, and the (now-frozen, lower) requirement lets
+// the rest of the echo sustain past bargeInMinSpeechMs. Confirmed against
+// the actual unfixed vad.js: base 0.3 with rises to 0.36 every 150ms fires
+// "speech-start" at t=912ms.
+
+test("peak-hold: silence then jittery echo never fires speech-start (live failure reproduced)", () => {
+  const vad = createEnergyVAD(OPTS);
+  const events = [];
+  let e = vad.process(0.001, 0, true);   // the audio-output delay: near-silence
+  if (e) events.push(e);
+  for (let t = 16; t < 8000; t += 16) {   // echo with natural variance, several seconds
+    const level = (t % 150) < 50 ? 0.36 : 0.3;
+    e = vad.process(level, t, true);
+    if (e) events.push(e);
+  }
+  assert.deepEqual(events, []);
+});
+
+test("peak-hold: converges within the grace window itself -- the echo still doesn't fire right as the window elapses", () => {
+  // Under the EMA-only version this is the tightest spot: the floor has had
+  // the least time to adapt right as the window ends, and (per the unfixed
+  // probe above) this is exactly where the old code fires -- t=912ms, just
+  // past the 600ms window. With peak-hold the floor already equals the
+  // loudest echo actually observed (0.36) by the time the window ends, not
+  // ~52% of it, so the requirement (0.72) is never in reach of this echo.
+  const vad = createEnergyVAD(OPTS);
+  let e = vad.process(0.001, 0, true);
+  assert.equal(e, null);
+  for (let t = 16; t < 1000; t += 16) {   // grace window (600ms) plus a bit past it
+    const level = (t % 150) < 50 ? 0.36 : 0.3;
+    e = vad.process(level, t, true);
+    assert.equal(e, null);
+  }
+});
+
+test("peak-hold: a real interruption over the same echo still fires once the window has passed", () => {
+  const vad = createEnergyVAD(OPTS);
+  vad.process(0.001, 0, true);
+  for (let t = 16; t < 800; t += 16) {   // onset, well past the grace window, steady echo
+    vad.process(0.3, t, true);
+  }
+  const events = [];
+  for (let t = 800; t < 1800; t += 16) {   // caller speaks over the echo
+    const e = vad.process(0.9, t, true);
+    if (e) events.push(e);
+  }
+  assert.deepEqual(events, ["speech-start"]);
+});
+
+test("peak-hold: the peak does not leak across replies -- a fresh strict period gets a fresh floor", () => {
+  const vad = createEnergyVAD(OPTS);
+  // First reply: loud echo, the peak settles high.
+  vad.process(0.001, 0, true);
+  for (let t = 16; t < 800; t += 16) vad.process(0.6, t, true);
+  vad.process(0.001, 800, false);   // the interruption window closes
+
+  // Second reply: a much quieter echo, settled past ITS OWN grace window.
+  vad.process(0.001, 816, true);
+  for (let t = 832; t < 1416; t += 16) vad.process(0.05, t, true);
+
+  // A modest voice -- well below what the OLD (discarded) peak would have
+  // demanded (0.6 * bargeInMargin = 1.2) -- can still interrupt, proving the
+  // new period's floor reflects the new quiet echo, not the stale peak.
+  const events = [];
+  for (let t = 1416; t < 2416; t += 16) {
+    const e = vad.process(0.3, t, true);
+    if (e) events.push(e);
+  }
+  assert.deepEqual(events, ["speech-start"]);
+});
+
+test("peak-hold: non-strict mode is completely unaffected", () => {
   const vad = createEnergyVAD(OPTS);
   assert.equal(vad.process(LOUD, 0), null);
   assert.equal(vad.process(LOUD, 100), null);   // still under 200ms

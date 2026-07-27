@@ -7,6 +7,7 @@ const talk = document.getElementById("talk");
 const transcriptEl = document.getElementById("transcript");
 const replyEl = document.getElementById("reply");
 const timingsEl = document.getElementById("timings");
+const echoSafeBtn = document.getElementById("echoSafeToggle");
 
 // One session per page load, so the agent remembers this caller across turns.
 const sessionId = crypto.randomUUID();
@@ -25,6 +26,17 @@ let rafId = null;
 // Tracks the previous frame's vad.isPending() so tick() can detect the edges
 // (nascent turn just began / just ended) rather than re-testing every frame.
 let wasPending = false;
+// Tracks the previous frame's suppression state (see tick() below) so a
+// falling edge -- suppression just ended -- can be detected and the
+// detector's stale internal state cleared before real audio is fed to it
+// again.
+let wasSuppressed = false;
+
+// User toggle: while true, the mic is ignored entirely whenever the agent is
+// speaking, so it can never hear (and react to) its own voice. Off by
+// default -- it trades away barge-in for a guaranteed-correct fallback on
+// unknown hardware where the heuristics in vad.js's echo floor may not hold.
+let echoSafe = false;
 
 // How far text-to-speech got through the last reply before it was cut off.
 // null means "nothing was interrupted"; the server then leaves history alone.
@@ -36,11 +48,13 @@ const LABELS = {
         speaking: "Speaking… (interrupt any time)", ptt: "Hold to talk",
         recording: "Listening… release to send", blocked:
         "Microphone blocked — allow mic access and reload.",
-        didnt: "(didn't catch that)", endCall: "End call" },
+        didnt: "(didn't catch that)", endCall: "End call",
+        echoSafe: "Echo-safe" },
   zh: { idle: "开始通话", listening: "正在聆听…", thinking: "思考中…",
         speaking: "正在回答…（可随时打断）", ptt: "按住说话",
         recording: "正在聆听…松开发送", blocked: "麦克风被阻止，请允许后重新加载。",
-        didnt: "（没有听清）", endCall: "结束通话" },
+        didnt: "（没有听清）", endCall: "结束通话",
+        echoSafe: "防回声" },
 };
 
 // Appended to the hands-free in-call labels so the button visibly doubles as
@@ -51,6 +65,7 @@ const withEndCallHint = (text) => text + END_CALL_HINT[lang];
 function render() {
   const L = LABELS[lang];
   document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  echoSafeBtn.textContent = L.echoSafe;
   talk.classList.remove("recording", "listening", "speaking");
   talk.title = "";
   if (state.mode === "ptt") {
@@ -126,6 +141,35 @@ function startVadLoop() {
   vad = createEnergyVAD();
   const tick = () => {
     try {
+      // Echo-safe mode: while the agent is speaking, ignore the mic
+      // entirely. The Web Speech API exposes no handle on its own audio
+      // stream, so the browser's echo cancellation can never remove the
+      // agent's voice from what the mic hears -- every other defense here is
+      // a heuristic (the echo floor in vad.js). This is the guaranteed-
+      // correct fallback for a public demo on unknown hardware: no
+      // interruption is possible, but the agent can also never hear itself.
+      if (echoSafe && state.name === SPEAKING) {
+        wasSuppressed = true;
+        return;
+      }
+      if (wasSuppressed) {
+        // Detection was frozen for the whole reply, so the detector may be
+        // holding a stale nascent turn (loudSince set from a timestamp
+        // seconds in the past). A single throwaway process(0, now, false)
+        // call is not enough to clean that up: the "not loud" branch's
+        // dip-tolerance grace only starts counting from the moment it's
+        // called (quietSince is set to *now*), so it can't retroactively
+        // clear an old loudSince in one call -- and if the caller is
+        // already making sound on the very first real frame after resuming,
+        // that stale loudSince would make (nowMs - loudSince) look enormous
+        // and fire a false speech-start instantly instead of waiting out
+        // minSpeechMs/bargeInMinSpeechMs on the new sound. Recreating the
+        // detector guarantees a genuinely clean slate (loudSince, quietSince,
+        // speaking, echoFloor, wasStrict all reset) with no such gap.
+        vad = createEnergyVAD();
+        wasPending = false;
+        wasSuppressed = false;
+      }
       analyser.getFloatTimeDomainData(buf);
       let sum = 0;
       for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
@@ -155,6 +199,7 @@ function stopVadLoop() {
   rafId = null;
   vad = null;
   wasPending = false;
+  wasSuppressed = false;
 }
 
 function startRecording() {
@@ -313,6 +358,17 @@ document.querySelectorAll(".mode").forEach((btn) => {
     }
     render();
   });
+});
+
+echoSafeBtn.addEventListener("click", () => {
+  echoSafe = !echoSafe;
+  echoSafeBtn.classList.toggle("active", echoSafe);
+  // No other bookkeeping needed here: tick() re-checks `echoSafe &&
+  // state.name === SPEAKING` every frame, so flipping this while the agent
+  // is mid-reply takes effect on the very next frame either way -- turning
+  // it on starts suppressing immediately, turning it off resumes detection
+  // (via the wasSuppressed reset path) immediately. In push-to-talk mode
+  // the VAD loop never runs at all, so this flag is simply inert there.
 });
 
 talk.addEventListener("click", async () => {

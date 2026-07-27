@@ -23,10 +23,10 @@
     .lang { flex: 1; padding: .6rem; border-radius: 8px; border: 1px solid #ccc;
             background: #fff; cursor: pointer; font-size: .95rem; }
     .lang.active { background: #1e40af; border-color: #1e40af; color: #fff; }
-    #modes { display: flex; gap: .5rem; margin-bottom: 1rem; }
-    .mode { flex: 1; padding: .5rem; border-radius: 8px; border: 1px solid #ccc;
+    #modes, #echoSafeRow { display: flex; gap: .5rem; margin-bottom: 1rem; }
+    .mode, .echo-safe { flex: 1; padding: .5rem; border-radius: 8px; border: 1px solid #ccc;
             background: #fff; cursor: pointer; font-size: .85rem; }
-    .mode.active { background: #475569; border-color: #475569; color: #fff; }
+    .mode.active, .echo-safe.active { background: #475569; border-color: #475569; color: #fff; }
     #talk.listening { background: #f0fdf4; border-color: #16a34a; color: #15803d; }
     #talk.speaking { background: #fefce8; border-color: #ca8a04; color: #a16207; }
   </style>
@@ -45,6 +45,10 @@
   <div id="modes">
     <button class="mode active" data-mode="hands-free">Hands-free</button>
     <button class="mode" data-mode="ptt">Hold to talk</button>
+  </div>
+
+  <div id="echoSafeRow">
+    <button id="echoSafeToggle" class="echo-safe">Echo-safe</button>
   </div>
 
   <button id="talk">Hold to talk</button>

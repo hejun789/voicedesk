@@ -47,6 +47,7 @@ export function createEnergyVAD({
     process(level, nowMs, strict = false) {
       if (strict) {
         if (!wasStrict) strictSince = nowMs;
+        const inGrace = nowMs - strictSince < bargeInGraceMs;
         // Only track ambient/echo while no turn is nascent. Once a candidate
         // turn starts accumulating (loudSince set), whatever is making the
         // noise is potentially speech, not ambient, so the estimate freezes
@@ -58,15 +59,51 @@ export function createEnergyVAD({
         // real animation-frame cadence (~16ms), where enough update calls
         // land inside the 300ms sustain window for the drift to matter.
         if (loudSince === null) {
-          // Slow adaptation is deliberate and load-bearing: steady echo
-          // pulls the floor up to its own level within about a second, but
-          // a sudden loud voice clears the margin well before the floor
-          // can catch up.
-          echoFloor = echoFloor === null
-            ? level
-            : echoFloor + (level - echoFloor) * echoFloorAlpha;
+          if (inGrace) {
+            // Inside the grace window, track the PEAK level rather than an
+            // EMA. An EMA initialised from the first frame -- silence, since
+            // audio output lags the request to speak -- only reaches ~52% of
+            // the true echo level after a 600ms window at ~60fps cadence
+            // (1 - 0.98^36). With bargeInMargin 2.0 that lands the
+            // requirement level with the echo itself, so a normal
+            // fluctuation in a real (non-flat) echo signal clears it, starts
+            // a nascent turn, and freezes the floor at that too-low value --
+            // the agent then interrupts itself on its own echo. Peak-hold
+            // means that by the time the window ends, the floor already
+            // equals the loudest echo actually observed, so steady echo
+            // (fluctuations included) cannot clear floor * bargeInMargin.
+            // Found via live mic testing with the (louder) zh-CN voice.
+            //
+            // DELIBERATE TRADE-OFF (owner's call, made from live evidence,
+            // not an accident of this implementation): this treats ANY loud
+            // sound observed during the grace window as echo, including a
+            // genuine caller who happens to start talking in the first
+            // 600ms of a reply. There is no way to avoid this -- from the
+            // detector's point of view, "the caller started talking late in
+            // the window" and "the reply's own audio arrived late in the
+            // window" are literally the same signal (loud sound landing
+            // during the audio-output latency gap). We chose to always
+            // resolve that ambiguity as echo because the self-talk loop
+            // this window exists to prevent happens on EVERY reply, while a
+            // caller interrupting within a reply's first 600ms is rare. The
+            // cost is bounded and temporary: once the loud sound stops, the
+            // EMA below decays the floor back down, and a later
+            // interruption at a normal volume fires again (see
+            // "grace window: the cost of ... is temporary" in
+            // tests/js/vad.test.mjs).
+            echoFloor = echoFloor === null ? level : Math.max(echoFloor, level);
+          } else {
+            // Past the grace window: resume the slow EMA. Slow adaptation is
+            // deliberate and load-bearing here too -- steady echo pulls the
+            // floor up to its own level within about a second, but a sudden
+            // loud voice clears the margin well before the floor can catch
+            // up.
+            echoFloor = echoFloor === null
+              ? level
+              : echoFloor + (level - echoFloor) * echoFloorAlpha;
+          }
         }
-        if (nowMs - strictSince < bargeInGraceMs) {
+        if (inGrace) {
           // Still within the post-onset grace window: the floor above keeps
           // learning the real echo level (that's the whole point), but no
           // turn may start, and any turn that started accumulating this
