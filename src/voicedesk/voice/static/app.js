@@ -38,6 +38,36 @@ let wasSuppressed = false;
 // unknown hardware where the heuristics in vad.js's echo floor may not hold.
 let echoSafe = false;
 
+// Live diagnostics, enabled with ?debug=1 only. Echo rejection is a heuristic
+// tuned against real hardware, and the numbers it acts on are invisible
+// otherwise -- this shows why a barge-in fired, or why it did not. Never
+// rendered for an ordinary visitor.
+const debugEl = new URLSearchParams(location.search).get("debug") === "1"
+  ? Object.assign(document.createElement("pre"), {
+      style: "position:fixed;top:0;right:0;margin:0;padding:.5rem;"
+           + "background:#111;color:#0f0;font:11px/1.4 ui-monospace,monospace;"
+           + "z-index:9999;white-space:pre;text-align:left",
+    })
+  : null;
+if (debugEl) document.body.appendChild(debugEl);
+let postCount = 0;
+
+function renderDebug(rms) {
+  const d = vad.debug();
+  const n = (v) => (v === null || v === undefined ? "  --  " : v.toFixed(4));
+  debugEl.textContent = [
+    `state      ${state.name}${state.capturing ? " +REC" : ""}`,
+    `strict     ${state.name === SPEAKING}`,
+    `echoSafe   ${echoSafe}`,
+    `rms        ${n(rms)}`,
+    `floor      ${n(d.echoFloor)}`,
+    `needs      ${n(d.requirement)}`,
+    `over?      ${d.requirement !== null && rms >= d.requirement}`,
+    `pending    ${d.pending}`,
+    `turns sent ${postCount}`,
+  ].join("\n");
+}
+
 // How far text-to-speech got through the last reply before it was cut off.
 // null means "nothing was interrupted"; the server then leaves history alone.
 let heardChars = null;
@@ -187,6 +217,8 @@ function startVadLoop() {
       if (pending && !wasPending && !state.capturing) startRecording();
       else if (!pending && wasPending && !state.capturing) discardRecording();
       wasPending = pending;
+
+      if (debugEl) renderDebug(rms);
     } finally {
       rafId = requestAnimationFrame(tick);
     }
@@ -255,6 +287,7 @@ async function send(blob) {
   form.append("session_id", sessionId);
   form.append("lang", lang);
   form.append("audio", blob, "turn.webm");
+  postCount += 1;
   if (heardChars !== null) {
     form.append("heard_chars", String(heardChars));
     heardChars = null;

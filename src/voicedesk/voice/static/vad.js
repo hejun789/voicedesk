@@ -42,6 +42,7 @@ export function createEnergyVAD({
   // turn, and freezes the floor at its uselessly-low value -- the agent
   // interrupts itself. Found via live mic testing with the zh-CN voice.
   let strictSince = null;
+  let lastRequirement = null;   // diagnostics only, see debug()
 
   return {
     process(level, nowMs, strict = false) {
@@ -125,6 +126,7 @@ export function createEnergyVAD({
         ? Math.max(bargeInThreshold, echoFloor * bargeInMargin)
         : threshold;
       const startMinSpeechMs = strict ? bargeInMinSpeechMs : minSpeechMs;
+      lastRequirement = startThreshold;   // diagnostics only, see debug()
 
       if (!speaking) {
         const loud = level >= startThreshold;
@@ -175,6 +177,19 @@ export function createEnergyVAD({
     // abandoned (a gap beyond dipToleranceMs resets loudSince). Lets app.js
     // start capturing speculatively on the first hint of sound without
     // process() having to carry a second signal in its single return value.
+    // Diagnostics only — never consulted by the agent. Exposes the internal
+    // estimates so the page can render a live overlay while tuning echo
+    // rejection against real hardware, which is the only way to see why a
+    // barge-in fired or failed to.
+    debug() {
+      return {
+        echoFloor,
+        requirement: lastRequirement,
+        pending: loudSince !== null,
+        speaking,
+      };
+    },
+
     isPending() {
       return loudSince !== null;
     },
