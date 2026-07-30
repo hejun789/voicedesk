@@ -221,6 +221,17 @@ limitation rather than fixed: a proper fix needs a different mechanism (e.g. req
 minimum ratio of genuinely loud frames, not just tolerating gaps) and its own live-tested
 round, and the failure mode is a single wasted turn, not a loop.
 
+**13. Groq occasionally garbles the closing sentence of a reply.** After a real booking
+confirmation, the model's final text repeated itself mid-sentence — *"...祝您有好好的好好好好
+您的预约已成功，...祝您有美好的一天！"* — the pleasantry breaking down into repeated
+characters before the whole confirmation restated itself cleanly. The booking data itself was
+correct and consistent both times (same date, time, and reason), so this is a text-generation
+glitch in the final reply, not a duplicate action or a tool-calling bug, and it's unrelated to
+the voice layer — it's the same category of Groq reliability quirk as the malformed
+`<function=...>` tool calls and leaked tool-call pseudo-code found in earlier phases.
+Documented as a known observation rather than fixed: it was not reproduced on demand, so
+there's no confirmed trigger to defend against yet.
+
 ---
 
 ## And two bugs in the eval itself
