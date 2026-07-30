@@ -190,6 +190,20 @@ function startVadLoop() {
       // correct fallback for a public demo on unknown hardware: no
       // interruption is possible, but the agent can also never hear itself.
       if (echoSafe && state.name === SPEAKING) {
+        if (!wasSuppressed) {
+          // Entering suppression for the first time this reply (or via a
+          // manual toggle mid-reply): a speculative recording may still be
+          // mid-accumulation from ambient sound during THINKING, since
+          // state.capturing is false there too and REPLY can arrive before
+          // the pending/discard edge below ever runs. Left alone, that
+          // recorder is never resolved for the whole reply, and the NEXT
+          // turn's single ondataavailable blob ends up spanning straight
+          // through the agent's own spoken reply -- reintroducing the exact
+          // self-echo failure the last nine commits exist to eliminate,
+          // just through the recording pipeline instead of the live VAD.
+          discardRecording();
+          wasPending = false;
+        }
         wasSuppressed = true;
         return;
       }
