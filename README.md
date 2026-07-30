@@ -23,8 +23,10 @@ eval itself](#and-two-bugs-in-the-eval-itself).**
 ## Live demo
 
 **🎙️ Try it: <https://voicedesk-ch1y.onrender.com>** — start the call and just speak, in English
-or 中文, to book an appointment by voice. It listens for when you stop talking, and you can
-interrupt it mid-sentence. Chrome or Edge (needs a microphone).
+or 中文, to book an appointment by voice. It listens for when you stop talking. "Echo-safe" is on
+by default (the mic ignores the agent's own voice, so it never talks over itself); turn it off to
+interrupt it mid-sentence — best on headphones, since without real acoustic echo cancellation a
+laptop's speakers-into-mic setup can occasionally hear itself. Chrome or Edge (needs a microphone).
 
 > It runs on a free tier: it sleeps when idle (≈30s to wake on the first hit) and is
 > rate-limited, so it may reach its daily cap — in which case it says so politely.
@@ -197,6 +199,28 @@ perfectly good request. Invisible, because the voice server logged nothing.
 **Fix:** surfaced LLM retries and fallbacks in the server log, then found the cause: two
 resamples was too few for Groq's flaky tool-calling. Raised the budget.
 
+**11. Hands-free mode talked to itself.** With speakers on, the agent's own reply reached
+the mic and it recorded, transcribed, and replied to its own voice — worse on the
+Chinese voice, which is louder and network-backed, so its output bypasses the browser's
+own echo cancellation. Five rounds of magnitude-based rejection each fixed a real live
+failure (a dip-tolerance bug that made barge-in physically impossible, first-word
+clipping, a fixed threshold that only worked for one voice, an onset calibration race,
+a floor that converged too slowly) and each was eventually beaten by another one — because
+the Web Speech API exposes no handle on its own audio stream, so real acoustic echo
+cancellation isn't possible here, and every fix is a heuristic on a losing footing.
+**Fix:** rather than keep tuning against unknown hardware, "Echo-safe" is on by default —
+the mic is ignored entirely while the agent speaks, which is guaranteed correct regardless
+of speakers, mic, or voice. Barge-in is opt-in via the toggle, most reliable on headphones.
+
+**12. Rapid typing near the mic could spawn a spurious turn.** The dip-tolerance fix in
+finding 11 (added so natural pauses *between syllables* don't cut off a sentence) also
+bridges gaps *between keystrokes* if typing is fast enough — a burst of clicks can read as
+200ms of continuous sound, get sent to Whisper, and come back as a short hallucinated
+transcript (Whisper always outputs *something*, even for noise). Documented as a known
+limitation rather than fixed: a proper fix needs a different mechanism (e.g. requiring a
+minimum ratio of genuinely loud frames, not just tolerating gaps) and its own live-tested
+round, and the failure mode is a single wasted turn, not a loop.
+
 ---
 
 ## And two bugs in the eval itself
@@ -305,15 +329,18 @@ $env:PYTHONPATH = "src"; python -m voicedesk.cli
 ```powershell
 $env:PYTHONPATH = "src"; python -m voicedesk.voice
 ```
-Open <http://127.0.0.1:8000>, click "Start call", and speak. The app detects when you
+Open <http://127.0.0.1:7860>, click "Start call", and speak. The app detects when you
 stop talking and sends your input to Groq Whisper for transcription. The agent takes the
-action and the browser speaks the reply back. You can interrupt the agent mid-sentence
-while it's speaking, and the app includes a "Hold to talk" toggle if you prefer
-push-to-talk mode. Each turn shows its latency breakdown (stt / agent / total).
+action and the browser speaks the reply back. "Echo-safe" is on by default (the mic
+ignores the agent's own voice while it talks, so it never interrupts itself); turn it off
+to interrupt the agent mid-sentence — most reliable on headphones, since without real
+acoustic echo cancellation a speakers-into-mic setup can occasionally hear its own reply.
+The app also includes a "Hold to talk" toggle if you prefer push-to-talk mode. Each turn
+shows its latency breakdown (stt / agent / total).
 
 Use Chrome or Edge — it needs `MediaRecorder` and the Web Speech API.
 
-### Run the tests (291 Python + 24 JavaScript, fully offline — no API key needed)
+### Run the tests (296 Python + 58 JavaScript, fully offline — no API key needed)
 ```powershell
 $env:PYTHONPATH = "src"; python -m pytest -q
 node --test tests/js/*.test.mjs

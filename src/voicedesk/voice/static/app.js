@@ -36,7 +36,17 @@ let wasSuppressed = false;
 // speaking, so it can never hear (and react to) its own voice. Off by
 // default -- it trades away barge-in for a guaranteed-correct fallback on
 // unknown hardware where the heuristics in vad.js's echo floor may not hold.
-let echoSafe = false;
+// Default ON. Five rounds of magnitude-based echo rejection (dip tolerance,
+// adaptive floor, grace window, peak-hold) each fixed a real live-mic failure
+// and each was eventually beaten by another one -- because the Web Speech API
+// exposes no handle on its own audio stream, so real echo cancellation is
+// impossible here; every fix is a heuristic on a losing information-theoretic
+// footing. For a public demo on hardware we don't control, "barge-in never
+// works" (this toggle OFF) is worse than "barge-in usually doesn't happen"
+// (this toggle ON): the former guarantees the agent never talks over itself,
+// which is the failure mode that actually breaks a demo. Visitors on
+// headphones, or who want to try interrupting it, can switch it off.
+let echoSafe = true;
 
 // Live diagnostics, enabled with ?debug=1 only. Echo rejection is a heuristic
 // tuned against real hardware, and the numbers it acts on are invisible
@@ -96,6 +106,7 @@ function render() {
   const L = LABELS[lang];
   document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
   echoSafeBtn.textContent = L.echoSafe;
+  echoSafeBtn.classList.toggle("active", echoSafe);
   talk.classList.remove("recording", "listening", "speaking");
   talk.title = "";
   if (state.mode === "ptt") {
