@@ -75,7 +75,7 @@ Every boundary is deliberate:
 - **Tools know nothing about the LLM.** They're pure functions over a SQLite
   connection, so they're unit-testable with an in-memory database.
 - **The agent knows nothing about the provider.** It talks to an `LLMClient`
-  protocol, so the entire **291-test** suite runs offline against a `FakeLLM` — no
+  protocol, so the entire **296-test** suite runs offline against a `FakeLLM` — no
   network, no API key, no cost.
 - **The agent knows nothing about audio.** That's why the voice layer (Groq Whisper
   in, browser speech-synthesis out) was an *additive* change that never touched the
@@ -411,7 +411,15 @@ python -m voicedesk.evals --lang zh --runs 3
   agent → browser speech-synthesis (TTS). One HTTP POST per turn — no WebSockets needed,
   because the browser speaks the reply itself. The agent core and eval harness carry over
   unchanged, because neither knows about audio. ~2s per turn end-to-end.
+- **Phase 4 — deploy** ✅ hosted demo, per-turn latency budget, cost per resolution
 - **Phase 5 — Chinese** ✅ bilingual voice (EN/中文): explicit language config, character
   n-gram FAQ retrieval for Chinese, Chinese silence-artefact handling, and all 30 eval
   scenarios mirrored with identical expectations for a true per-language comparison
-- **Phase 4 — deploy** hosted demo, per-turn latency budget, cost per resolution
+- **Phase 6 — turn-taking** ✅ hands-free conversation replacing push-to-talk as the
+  default: energy-based voice-activity detection, barge-in while the agent is speaking,
+  and server-side history truncation so an interrupted reply isn't misremembered. Six
+  rounds of real-microphone testing found what no offline test could (see findings
+  #11–13 above) and led to the honest call: echo-safe mode (mic muted while the agent
+  talks) ships as the default, with barge-in available as a documented opt-in — because
+  the Web Speech API exposes no handle on its own audio, so true echo cancellation isn't
+  possible here. Push-to-talk survives as a fallback toggle.
