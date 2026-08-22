@@ -2,15 +2,15 @@ from fastapi.testclient import TestClient
 
 from voicedesk.agent import Agent
 from voicedesk.llm import FakeLLM
-from voicedesk.voice.server import create_app
+from voicedesk.voice.server import create_app, MAX_TTS_CHARS
 from voicedesk.voice.session import SessionStore
 from voicedesk.voice.stt import FakeSTT
 from voicedesk.voice.tts import FakeTTS, TTSError
 
 
-def _client(db, tts=None):
+def _client(db, tts=None, tts_limiter=None):
     sessions = SessionStore(lambda lang: Agent(db, FakeLLM([])))
-    app = create_app(FakeSTT([]), sessions, tts=tts)
+    app = create_app(FakeSTT([]), sessions, tts=tts, tts_limiter=tts_limiter)
     return TestClient(app)
 
 
@@ -48,3 +48,27 @@ def test_tts_503_when_synthesis_fails(db):
     res = client.post("/tts", data={"text": "hi", "lang": "en"})
     assert res.status_code == 503
     assert res.json()["detail"] == "tts_failed"
+
+
+def test_tts_413_when_text_exceeds_the_char_cap(db):
+    tts = FakeTTS()
+    client = _client(db, tts=tts)
+    oversize = "x" * (MAX_TTS_CHARS + 1)
+    res = client.post("/tts", data={"text": oversize, "lang": "en"})
+    assert res.status_code == 413
+    assert res.json()["detail"] == "text_too_long"
+    assert tts.calls == []   # rejected before it ever reached the client
+
+
+class _RefusingLimiter:
+    def allow(self, ip):
+        return False
+
+
+def test_tts_429_when_the_limiter_refuses(db):
+    tts = FakeTTS()
+    client = _client(db, tts=tts, tts_limiter=_RefusingLimiter())
+    res = client.post("/tts", data={"text": "hi", "lang": "en"})
+    assert res.status_code == 429
+    assert res.json()["detail"] == "rate_limited"
+    assert tts.calls == []   # rejected before it ever reached the client

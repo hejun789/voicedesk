@@ -159,4 +159,4 @@ def test_static_app_js_is_served(conn):
     client = _client(conn, FakeSTT([]), FakeLLM([]))
     r = client.get("/static/app.js")
     assert r.status_code == 200
-    assert "speechSynthesis" in r.text
+    assert "createBufferSource" in r.text

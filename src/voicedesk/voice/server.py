@@ -74,19 +74,33 @@ MIN_AUDIO_BYTES = 1000
 # Guard against absurdly large uploads.
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 
+# Piper allocates roughly 2.7KB of RAM per input character, fully buffered
+# before the response is sent, and run_in_threadpool defaults to 40 workers —
+# a handful of large requests can OOM a 2-vCPU Space and starve /turn behind
+# them. 800 is far above any real agent reply, so this never clips a
+# legitimate turn.
+MAX_TTS_CHARS = 800
+
 
 def _ms_since(start: float) -> int:
     return int((time.perf_counter() - start) * 1000)
 
 
-def create_app(stt, sessions, lock=None, limiter=None, tts=None) -> FastAPI:
+def create_app(stt, sessions, lock=None, limiter=None, tts=None,
+               tts_limiter=None) -> FastAPI:
     """`stt` implements STTClient; `sessions` is a SessionStore. Both are
     injected so the whole app can be tested with no network and no microphone.
 
     `lock` serialises agent turns. Each session now has its own in-memory
     calendar, but a single global lock keeps concurrent visitors' agent calls
     from interleaving on shared process state and naturally throttles quota
-    burn on the free tier. Defaults to a fresh threading.Lock()."""
+    burn on the free tier. Defaults to a fresh threading.Lock().
+
+    `tts` implements TTSClient and backs the /tts route; `tts_limiter` is a
+    separate RateLimiter for that route (see MAX_TTS_CHARS above) — kept
+    independent of `limiter` because every turn already makes exactly one
+    /tts call, so sharing a counter would silently halve the caller's turn
+    budget."""
     if lock is None:
         lock = threading.Lock()
     app = FastAPI(title="VoiceDesk")
@@ -166,6 +180,18 @@ def create_app(stt, sessions, lock=None, limiter=None, tts=None) -> FastAPI:
                 if heard_chars is not None:
                     # The caller cut the previous reply short; trim history to
                     # what they actually heard before adding this turn.
+                    #
+                    # Ordering note: a THINKING-interrupt's heard_chars=0 and
+                    # the turn it interrupted are racing for this same lock --
+                    # both are /turn requests, and only one truncates history
+                    # that the other is still about to append to. Correctness
+                    # relies on the interrupted turn reaching the lock first,
+                    # which it reliably does: the interrupting turn's own
+                    # /turn call cannot start until the caller finishes an
+                    # utterance (min ~200ms), the VAD's hangover elapses
+                    # (800ms), the recording uploads, and its own STT
+                    # completes -- all strictly after the interrupted turn's
+                    # /turn request was already sent.
                     agent.truncate_last_reply(heard_chars)
                 return agent.respond(transcript)
 
@@ -185,9 +211,17 @@ def create_app(stt, sessions, lock=None, limiter=None, tts=None) -> FastAPI:
         }
 
     @app.post("/tts")
-    async def synthesize(text: str = Form(...), lang: str = Form(DEFAULT_LANG)):
+    async def synthesize(
+        request: Request,
+        text: str = Form(...),
+        lang: str = Form(DEFAULT_LANG),
+    ):
         if tts is None:
             raise HTTPException(status_code=503, detail="tts_unavailable")
+        if len(text) > MAX_TTS_CHARS:
+            raise HTTPException(status_code=413, detail="text_too_long")
+        if tts_limiter is not None and not tts_limiter.allow(_client_ip(request)):
+            raise HTTPException(status_code=429, detail="rate_limited")
         lang_norm = normalize_lang(lang)
         try:
             wav = await run_in_threadpool(tts.synthesize, text, lang_norm)

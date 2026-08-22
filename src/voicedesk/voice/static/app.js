@@ -39,12 +39,12 @@ const debugEl = new URLSearchParams(location.search).get("debug") === "1"
 if (debugEl) document.body.appendChild(debugEl);
 let postCount = 0;
 
-function renderDebug(rms) {
+function renderDebug(rms, strict) {
   const d = vad.debug();
   const n = (v) => (v === null || v === undefined ? "  --  " : v.toFixed(4));
   debugEl.textContent = [
     `state      ${state.name}${state.capturing ? " +REC" : ""}`,
-    `strict     ${state.name === SPEAKING}`,
+    `strict     ${strict}`,
     `rms        ${n(rms)}`,
     `floor      ${n(d.echoFloor)}`,
     `needs      ${n(d.requirement)}`,
@@ -176,7 +176,21 @@ function startVadLoop() {
       let sum = 0;
       for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
       const rms = Math.sqrt(sum / buf.length);
-      const event = vad.process(rms, performance.now(), state.name === SPEAKING);
+      // "strict" must mean "the agent's audio is audible right now," not
+      // "a reply is expected to start speaking soon." speak() is async (one
+      // HTTP round trip plus Piper synthesis plus decode -- 265ms-2.4s,
+      // versus tens of ms for the old window.speechSynthesis path this
+      // replaced), so state.name === SPEAKING alone covers a silent gap
+      // before audio exists. Using that gap as `strict` would both block
+      // barge-in for up to bargeInGraceMs (vad.js) while nothing is playing,
+      // and let the grace window elapse in silence, so the peak-hold learns
+      // the room's ambient floor instead of the echo and collapses the
+      // requirement to the bare threshold -- reopening the self-interruption
+      // failure the grace window exists to prevent. ttsSource is non-null
+      // only for the span it is actually feeding the Web Audio graph, so it
+      // is a tight proxy for real audio onset/offset.
+      const speakingAloud = ttsSource !== null;
+      const event = vad.process(rms, performance.now(), speakingAloud);
       if (event === "speech-start") dispatch("SPEECH_START");
       else if (event === "speech-end") dispatch("SPEECH_END");
 
@@ -190,7 +204,7 @@ function startVadLoop() {
       else if (!pending && wasPending && !state.capturing) discardRecording();
       wasPending = pending;
 
-      if (debugEl) renderDebug(rms);
+      if (debugEl) renderDebug(rms, speakingAloud);
     } finally {
       rafId = requestAnimationFrame(tick);
     }
@@ -259,14 +273,28 @@ async function send(blob) {
   form.append("lang", lang);
   form.append("audio", blob, "turn.webm");
   postCount += 1;
-  if (heardChars !== null) {
-    form.append("heard_chars", String(heardChars));
-    heardChars = null;
+  // Held in a local, not cleared here: /turn only reaches
+  // truncate_last_reply after four early returns (rate-limited, audio size
+  // out of range, STTError, empty/hallucinated transcript) that never touch
+  // history. Clearing the global the instant it's attached would throw the
+  // value away on any of those paths, permanently -- the previous reply
+  // would stay in the agent's history as if fully spoken even though the
+  // caller cut it off. It is cleared below instead, only once the response
+  // proves it was actually used.
+  const heardCharsForThisTurn = heardChars;
+  if (heardCharsForThisTurn !== null) {
+    form.append("heard_chars", String(heardCharsForThisTurn));
   }
 
   try {
     const res = await fetch("/turn", { method: "POST", body: form });
     const data = await res.json();
+    // `transcript` is non-empty exactly on the path that reaches
+    // truncate_last_reply server-side -- server.py returns it empty on all
+    // four early-return paths above. That makes it the correct signal for
+    // "the heard_chars this request carried was actually consumed", not
+    // response success alone.
+    if (data.transcript) heardChars = null;
     transcriptEl.textContent = data.transcript || LABELS[lang].didnt;
     replyEl.textContent = data.reply;
     const t = data.timings;
@@ -334,11 +362,12 @@ async function speak(text, replyLang) {
   // check would pass for A's stale resumed continuation, overwrite the
   // global ttsSource out from under B's still-playing node, and orphan it
   // -- its onended would still fire TTS_END while B's audio is audibly
-  // still playing, dropping the state machine out of SPEAKING and flipping
-  // vad.js's `strict` argument (in startVadLoop()'s `state.name ===
-  // SPEAKING`) to false mid-speech, silently disabling the echo floor while
-  // the agent is still talking out loud. That is the exact self-
-  // interruption failure this whole plan exists to prevent.
+  // still playing, and would null the global ttsSource that vad.js's
+  // `strict` argument (startVadLoop()'s `speakingAloud = ttsSource !==
+  // null`) depends on, flipping it to false mid-speech and silently
+  // disabling the echo floor while the agent is still talking out loud.
+  // That is the exact self-interruption failure this whole plan exists to
+  // prevent.
   if (seq !== speakSeq) return;
   // The caller may also have simply hung up (state.name !== SPEAKING with
   // seq still current): do not start playback for a call the state machine
@@ -355,19 +384,35 @@ async function speak(text, replyLang) {
   // so it is likewise safe to defer.
   spokenText = text;
   heardChars = null;
-  ttsSource = ctx.createBufferSource();
-  ttsSource.buffer = buffer;
-  ttsSource.connect(ctx.destination);
-  ttsDurationMs = buffer.duration * 1000;
-  ttsStartedAt = performance.now();
-  ttsAwaitingPlayback = false;
-  ttsSource.onended = () => {
+  try {
+    // A context can come out of decodeAudioData still suspended (e.g. an
+    // autoplay policy that hasn't seen a user gesture yet); start() on a
+    // suspended context throws rather than queuing, so resume first.
+    if (ctx.state === "suspended") await ctx.resume();
+    ttsSource = ctx.createBufferSource();
+    ttsSource.buffer = buffer;
+    ttsSource.connect(ctx.destination);
+    ttsDurationMs = buffer.duration * 1000;
+    ttsStartedAt = performance.now();
+    ttsAwaitingPlayback = false;
+    ttsSource.onended = () => {
+      ttsSource = null;
+      heardChars = null;
+      spokenText = "";
+      dispatch("TTS_END");
+    };
+    ttsSource.start();
+  } catch (err) {
+    // resume()/start() can still throw (e.g. autoplay policy refuses
+    // resume()). Without this catch that's an unhandled rejection AND the
+    // machine is stranded in SPEAKING with no TTS_END ever dispatched.
+    // Guarded by seq for the same reason as the fetch/decode catch above.
     ttsSource = null;
-    heardChars = null;
+    if (seq !== speakSeq) return;
+    ttsAwaitingPlayback = false;
     spokenText = "";
     dispatch("TTS_END");
-  };
-  ttsSource.start();
+  }
 }
 
 function cancelSpeech() {
