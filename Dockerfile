@@ -24,6 +24,23 @@ ENV PIPER_VOICES_DIR=/app/voices
 
 # Fetched at build time, not request time: these are ~150MB combined and
 # would make the container's first reply take minutes instead of seconds.
+#
+# This RUN sits after COPY src/ on purpose: download_voices.py imports
+# _VOICE_IDS/_voice_repo_path from voicedesk.voice.tts rather than
+# hardcoding the voice list a second time, so the download path can never
+# drift from the path PiperTTS actually reads. The cost is that ANY edit
+# under src/ — including the static frontend files Tasks 4-7 touch
+# repeatedly — busts this layer and every layer after it, forcing a fresh
+# ~126MB Hugging Face re-download on every rebuild, not just changes that
+# actually affect the voice models.
+#
+# Remedy, if build times become painful: split a narrow layer ahead of
+# COPY src/ that copies only voicedesk/lang.py, voicedesk/voice/tts.py,
+# voicedesk/voice/download_voices.py and their two __init__.py files, run
+# this RUN against that layer, then COPY src/ (which will re-copy the same
+# files harmlessly) afterwards. Unverified here — Docker isn't installed on
+# this machine, so whoever applies it must actually build the image to
+# confirm the app still starts before trusting it.
 RUN python -m voicedesk.voice.download_voices
 
 EXPOSE 7860
