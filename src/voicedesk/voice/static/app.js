@@ -141,6 +141,7 @@ function runAction(action) {
   else if (action === "STOP_AND_SEND") stopRecordingAndSend();
   else if (action === "CANCEL_TTS") cancelSpeech();
   else if (action === "SPEAK") speak(pendingReply, pendingLang);
+  else if (action === "DISCARD_PENDING_REPLY") heardChars = 0;
 }
 
 // --- microphone + VAD ------------------------------------------------------
