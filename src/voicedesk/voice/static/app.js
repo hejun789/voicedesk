@@ -93,7 +93,7 @@ const withEndCallHint = (text) => text + END_CALL_HINT[lang];
 function render() {
   const L = LABELS[lang];
   document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
-  talk.classList.remove("recording", "listening", "speaking");
+  talk.classList.remove("recording", "listening", "speaking", "thinking");
   talk.title = "";
   if (state.mode === "ptt") {
     talk.textContent = state.capturing ? L.recording : L.ptt;
@@ -105,7 +105,10 @@ function render() {
     return;
   }
   talk.title = L.endCall;
-  if (state.name === THINKING) talk.textContent = withEndCallHint(L.thinking);
+  if (state.name === THINKING) {
+    talk.textContent = withEndCallHint(L.thinking);
+    talk.classList.add("thinking");
+  }
   else if (state.name === SPEAKING) {
     talk.textContent = withEndCallHint(L.speaking);
     talk.classList.add("speaking");
