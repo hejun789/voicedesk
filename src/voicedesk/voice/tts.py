@@ -2,9 +2,9 @@
 
 Replaces the browser's built-in `window.speechSynthesis`: that API exposes no
 handle on its own audio output, so the browser's echo cancellation can never
-treat it as a reference signal (see app.js's `echoSafe`). Piper instead
-returns plain WAV bytes that app.js plays through the page's own Web Audio
-graph — a real, page-controlled audio node the browser's AEC *can* reference.
+treat it as a reference signal. Piper instead returns plain WAV bytes that
+app.js plays through the page's own Web Audio graph — a real, page-controlled
+audio node the browser's AEC *can* reference.
 """
 import io
 import os

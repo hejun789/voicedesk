@@ -12,7 +12,6 @@ const timingsEl = document.getElementById("timings");
 const sessionId = crypto.randomUUID();
 
 let lang = "en";
-const BCP47 = { en: "en-US", zh: "zh-CN" };
 
 let state = initialState("hands-free");
 let vad = null;
@@ -62,6 +61,17 @@ let spokenText = "";
 let ttsSource = null;      // the AudioBufferSourceNode currently playing, or null
 let ttsStartedAt = 0;      // performance.now() when the current reply started playing
 let ttsDurationMs = 0;     // total duration (ms) of the current reply's audio
+// Bumped at the top of every speak() call, before any await. SPEAKING is
+// re-entered every turn, so `state.name === SPEAKING` alone cannot tell a
+// stale reply's resumed continuation from the current one -- comparing the
+// call's own seq against this can. See speak()'s post-await guard.
+let speakSeq = 0;
+// True from the start of a speak() round trip until ttsSource.start()
+// actually begins playback. Lets cancelSpeech() recognize a barge-in that
+// lands in the silent window between the reply text appearing (button
+// already reads "Speaking…") and audio actually starting -- without this,
+// heardChars would stay null for a reply the caller heard zero of.
+let ttsAwaitingPlayback = false;
 
 const LABELS = {
   en: { idle: "Start call", listening: "Listening…", thinking: "Thinking…",
@@ -271,8 +281,8 @@ async function send(blob) {
 // --- text to speech --------------------------------------------------------
 
 async function speak(text, replyLang) {
-  spokenText = text;
-  heardChars = null;
+  const seq = ++speakSeq;
+  ttsAwaitingPlayback = true;
   const ctx = audioCtx;   // captured now: a hang-up during the awaits below
                            // can null the global before this resumes
   let buffer;
@@ -284,24 +294,70 @@ async function speak(text, replyLang) {
     });
     if (!res.ok) throw new Error(`tts failed: ${res.status}`);
     const bytes = await res.arrayBuffer();
-    if (!ctx || ctx.state === "closed") return;   // hung up mid-fetch
+    // The closed-context check sits before decode, not after: a hang-up
+    // landing during decodeAudioData itself is still caught below because
+    // every releaseMic() path dispatches DISARM first, which the
+    // `state.name !== SPEAKING` guard past the try/catch catches --
+    // load-bearing today, easy to break by moving this check.
+    if (!ctx || ctx.state === "closed") {
+      if (seq === speakSeq) ttsAwaitingPlayback = false;
+      return;   // hung up mid-fetch
+    }
     buffer = await ctx.decodeAudioData(bytes);
+    // decodeAudioData's promise form assumes a modern browser; the
+    // window.webkitAudioContext fallback in openMic() exists for one old
+    // enough that it may not support it and resolve to undefined instead of
+    // rejecting. Route that into the catch below rather than letting
+    // `ttsSource.buffer = undefined` throw uncaught past this try, which
+    // would skip TTS_END entirely and strand the call in SPEAKING forever.
+    if (!buffer) throw new Error("decodeAudioData returned no buffer");
   } catch (err) {
     // Synthesis, network, or decode failed -- nothing to speak. Move on
-    // rather than leaving the call stuck in SPEAKING forever.
+    // rather than leaving the call stuck in SPEAKING forever. Guarded by
+    // seq: a failed /tts for a reply the caller has already barged past
+    // must not dispatch TTS_END and pull the *current* reply out of
+    // SPEAKING out from under it.
+    if (seq !== speakSeq) return;
+    ttsAwaitingPlayback = false;
     spokenText = "";
     dispatch("TTS_END");
     return;
   }
-  // The caller may have barged in (or hung up) while the round trip above
-  // was in flight; do not start playback for a reply the state machine has
-  // already moved past.
-  if (state.name !== SPEAKING) return;
+  // seq catches what state.name alone cannot: SPEAKING is re-entered every
+  // turn, so if this reply's /tts round trip outlasts a barge-in-then-
+  // reply-B cycle (A dispatches SPEAK and awaits /tts; caller barges in
+  // -> LISTENING; caller finishes an utterance -> THINKING; /turn returns
+  // reply B -> SPEAKING, SPEAK for B), a bare `state.name === SPEAKING`
+  // check would pass for A's stale resumed continuation, overwrite the
+  // global ttsSource out from under B's still-playing node, and orphan it
+  // -- its onended would still fire TTS_END while B's audio is audibly
+  // still playing, dropping the state machine out of SPEAKING and flipping
+  // vad.js's `strict` argument (in startVadLoop()'s `state.name ===
+  // SPEAKING`) to false mid-speech, silently disabling the echo floor while
+  // the agent is still talking out loud. That is the exact self-
+  // interruption failure this whole plan exists to prevent.
+  if (seq !== speakSeq) return;
+  // The caller may also have simply hung up (state.name !== SPEAKING with
+  // seq still current): do not start playback for a call the state machine
+  // has already moved past, and stop advertising a pending reply that will
+  // never arrive.
+  if (state.name !== SPEAKING) {
+    ttsAwaitingPlayback = false;
+    return;
+  }
+  // Deferred until here (not set at the top of the function): a speak()
+  // call that bails out above must not clobber a heardChars = 0 that
+  // DISCARD_PENDING_REPLY may have just set for an unrelated, still-pending
+  // /turn send. spokenText is only ever read while ttsSource is non-null,
+  // so it is likewise safe to defer.
+  spokenText = text;
+  heardChars = null;
   ttsSource = ctx.createBufferSource();
   ttsSource.buffer = buffer;
   ttsSource.connect(ctx.destination);
   ttsDurationMs = buffer.duration * 1000;
   ttsStartedAt = performance.now();
+  ttsAwaitingPlayback = false;
   ttsSource.onended = () => {
     ttsSource = null;
     heardChars = null;
@@ -312,18 +368,26 @@ async function speak(text, replyLang) {
 }
 
 function cancelSpeech() {
-  if (!ttsSource) return;
-  // Deterministic from elapsed playback time -- unlike the speechSynthesis
-  // onboundary event this replaces, which Chrome's network-backed zh-CN
-  // voice never fired, silently disabling heard_chars tracking for that
-  // language.
-  const elapsedMs = performance.now() - ttsStartedAt;
-  const fraction = ttsDurationMs > 0 ? Math.min(1, elapsedMs / ttsDurationMs) : 0;
-  heardChars = Math.round(spokenText.length * fraction);
-  ttsSource.onended = null;   // suppress TTS_END: this is a barge-in, not natural completion
-  ttsSource.stop();
-  ttsSource = null;
-  spokenText = "";
+  if (ttsSource) {
+    // Deterministic from elapsed playback time -- unlike the speechSynthesis
+    // onboundary event this replaces, which Chrome's network-backed zh-CN
+    // voice never fired, silently disabling heard_chars tracking for that
+    // language.
+    const elapsedMs = performance.now() - ttsStartedAt;
+    const fraction = ttsDurationMs > 0 ? Math.min(1, elapsedMs / ttsDurationMs) : 0;
+    heardChars = Math.round(spokenText.length * fraction);
+    ttsSource.onended = null;   // suppress TTS_END: this is a barge-in, not natural completion
+    ttsSource.stop();
+    ttsSource = null;
+    spokenText = "";
+  } else if (ttsAwaitingPlayback) {
+    // Nothing is playing yet, but a /tts round trip is in flight and the
+    // button already reads "Speaking…" -- the caller barged in during that
+    // silent window and so heard exactly zero characters of this reply.
+    // Record that deterministically rather than leaving heardChars null,
+    // which would keep the whole (unheard) reply in history.
+    heardChars = 0;
+  }
 }
 
 // --- controls --------------------------------------------------------------
