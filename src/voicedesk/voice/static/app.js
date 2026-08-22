@@ -293,8 +293,15 @@ async function send(blob) {
     // truncate_last_reply server-side -- server.py returns it empty on all
     // four early-return paths above. That makes it the correct signal for
     // "the heard_chars this request carried was actually consumed", not
-    // response success alone.
-    if (data.transcript) heardChars = null;
+    // response success alone. The identity check guards a narrower case:
+    // a DISCARD_PENDING_REPLY landing between attach (above) and this
+    // response sets heardChars = 0 for the *next* /turn -- if this older
+    // request's success alone cleared it, that 0 would be wiped before it
+    // ever reached the interrupting request, and the unheard reply it was
+    // meant to truncate would stay in history.
+    if (data.transcript && heardCharsForThisTurn !== null && heardChars === heardCharsForThisTurn) {
+      heardChars = null;
+    }
     transcriptEl.textContent = data.transcript || LABELS[lang].didnt;
     replyEl.textContent = data.reply;
     const t = data.timings;
@@ -389,6 +396,11 @@ async function speak(text, replyLang) {
     // autoplay policy that hasn't seen a user gesture yet); start() on a
     // suspended context throws rather than queuing, so resume first.
     if (ctx.state === "suspended") await ctx.resume();
+    // resume() is a new await point past the seq/state guards above: a
+    // stale speak() whose resume() resolves late (Chrome can leave it
+    // pending until user activation) must not proceed past it and clobber
+    // a newer reply's ttsSource.
+    if (seq !== speakSeq) return;
     ttsSource = ctx.createBufferSource();
     ttsSource.buffer = buffer;
     ttsSource.connect(ctx.destination);
@@ -407,8 +419,12 @@ async function speak(text, replyLang) {
     // resume()). Without this catch that's an unhandled rejection AND the
     // machine is stranded in SPEAKING with no TTS_END ever dispatched.
     // Guarded by seq for the same reason as the fetch/decode catch above.
-    ttsSource = null;
+    // The seq check runs before nulling ttsSource: a stale continuation
+    // must not null the *live* reply's source, which would flip vad.js's
+    // `strict` flag to false mid-speech -- the self-interruption failure
+    // this whole plan exists to prevent.
     if (seq !== speakSeq) return;
+    ttsSource = null;
     ttsAwaitingPlayback = false;
     spokenText = "";
     dispatch("TTS_END");

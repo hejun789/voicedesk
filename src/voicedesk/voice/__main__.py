@@ -90,7 +90,7 @@ def main() -> None:
     )
     tts = PiperTTS()
     app = create_app(GroqWhisper(), sessions, limiter=limiter, tts=tts,
-                      tts_limiter=tts_limiter)
+                     tts_limiter=tts_limiter)
 
     # Piper's first call per language pays a 1.8-2.4s ONNX model load, which
     # would otherwise land inside the first reply's /tts call of every
