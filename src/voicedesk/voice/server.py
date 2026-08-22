@@ -3,14 +3,15 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from voicedesk.agent import _FALLBACK as AGENT_FALLBACK
 from voicedesk.lang import DEFAULT_LANG, normalize_lang
 from voicedesk.voice.stt import STTError, is_silence_hallucination
+from voicedesk.voice.tts import TTSError
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -78,7 +79,7 @@ def _ms_since(start: float) -> int:
     return int((time.perf_counter() - start) * 1000)
 
 
-def create_app(stt, sessions, lock=None, limiter=None) -> FastAPI:
+def create_app(stt, sessions, lock=None, limiter=None, tts=None) -> FastAPI:
     """`stt` implements STTClient; `sessions` is a SessionStore. Both are
     injected so the whole app can be tested with no network and no microphone.
 
@@ -182,6 +183,18 @@ def create_app(stt, sessions, lock=None, limiter=None) -> FastAPI:
                         "total_ms": _ms_since(started)},
             "lang": lang,
         }
+
+    @app.post("/tts")
+    async def synthesize(text: str = Form(...), lang: str = Form(DEFAULT_LANG)):
+        if tts is None:
+            raise HTTPException(status_code=503, detail="tts_unavailable")
+        lang_norm = normalize_lang(lang)
+        try:
+            wav = await run_in_threadpool(tts.synthesize, text, lang_norm)
+        except TTSError as e:
+            print(f"[voice] TTS error: {e}", file=sys.stderr, flush=True)
+            raise HTTPException(status_code=503, detail="tts_failed")
+        return Response(content=wav, media_type="audio/wav")
 
     app.mount("/static", NoCacheStaticFiles(directory=STATIC_DIR), name="static")
     return app
