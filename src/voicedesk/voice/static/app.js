@@ -7,7 +7,6 @@ const talk = document.getElementById("talk");
 const transcriptEl = document.getElementById("transcript");
 const replyEl = document.getElementById("reply");
 const timingsEl = document.getElementById("timings");
-const echoSafeBtn = document.getElementById("echoSafeToggle");
 
 // One session per page load, so the agent remembers this caller across turns.
 const sessionId = crypto.randomUUID();
@@ -26,27 +25,6 @@ let rafId = null;
 // Tracks the previous frame's vad.isPending() so tick() can detect the edges
 // (nascent turn just began / just ended) rather than re-testing every frame.
 let wasPending = false;
-// Tracks the previous frame's suppression state (see tick() below) so a
-// falling edge -- suppression just ended -- can be detected and the
-// detector's stale internal state cleared before real audio is fed to it
-// again.
-let wasSuppressed = false;
-
-// User toggle: while true, the mic is ignored entirely whenever the agent is
-// speaking, so it can never hear (and react to) its own voice. Off by
-// default -- it trades away barge-in for a guaranteed-correct fallback on
-// unknown hardware where the heuristics in vad.js's echo floor may not hold.
-// Default ON. Five rounds of magnitude-based echo rejection (dip tolerance,
-// adaptive floor, grace window, peak-hold) each fixed a real live-mic failure
-// and each was eventually beaten by another one -- because the Web Speech API
-// exposes no handle on its own audio stream, so real echo cancellation is
-// impossible here; every fix is a heuristic on a losing information-theoretic
-// footing. For a public demo on hardware we don't control, "barge-in never
-// works" (this toggle OFF) is worse than "barge-in usually doesn't happen"
-// (this toggle ON): the former guarantees the agent never talks over itself,
-// which is the failure mode that actually breaks a demo. Visitors on
-// headphones, or who want to try interrupting it, can switch it off.
-let echoSafe = true;
 
 // Live diagnostics, enabled with ?debug=1 only. Echo rejection is a heuristic
 // tuned against real hardware, and the numbers it acts on are invisible
@@ -68,7 +46,6 @@ function renderDebug(rms) {
   debugEl.textContent = [
     `state      ${state.name}${state.capturing ? " +REC" : ""}`,
     `strict     ${state.name === SPEAKING}`,
-    `echoSafe   ${echoSafe}`,
     `rms        ${n(rms)}`,
     `floor      ${n(d.echoFloor)}`,
     `needs      ${n(d.requirement)}`,
@@ -82,19 +59,20 @@ function renderDebug(rms) {
 // null means "nothing was interrupted"; the server then leaves history alone.
 let heardChars = null;
 let spokenText = "";
+let ttsSource = null;      // the AudioBufferSourceNode currently playing, or null
+let ttsStartedAt = 0;      // performance.now() when the current reply started playing
+let ttsDurationMs = 0;     // total duration (ms) of the current reply's audio
 
 const LABELS = {
   en: { idle: "Start call", listening: "Listening…", thinking: "Thinking…",
         speaking: "Speaking… (interrupt any time)", ptt: "Hold to talk",
         recording: "Listening… release to send", blocked:
         "Microphone blocked — allow mic access and reload.",
-        didnt: "(didn't catch that)", endCall: "End call",
-        echoSafe: "Echo-safe" },
+        didnt: "(didn't catch that)", endCall: "End call" },
   zh: { idle: "开始通话", listening: "正在聆听…", thinking: "思考中…",
         speaking: "正在回答…（可随时打断）", ptt: "按住说话",
         recording: "正在聆听…松开发送", blocked: "麦克风被阻止，请允许后重新加载。",
-        didnt: "（没有听清）", endCall: "结束通话",
-        echoSafe: "防回声" },
+        didnt: "（没有听清）", endCall: "结束通话" },
 };
 
 // Appended to the hands-free in-call labels so the button visibly doubles as
@@ -105,8 +83,6 @@ const withEndCallHint = (text) => text + END_CALL_HINT[lang];
 function render() {
   const L = LABELS[lang];
   document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
-  echoSafeBtn.textContent = L.echoSafe;
-  echoSafeBtn.classList.toggle("active", echoSafe);
   talk.classList.remove("recording", "listening", "speaking");
   talk.title = "";
   if (state.mode === "ptt") {
@@ -183,49 +159,6 @@ function startVadLoop() {
   vad = createEnergyVAD();
   const tick = () => {
     try {
-      // Echo-safe mode: while the agent is speaking, ignore the mic
-      // entirely. The Web Speech API exposes no handle on its own audio
-      // stream, so the browser's echo cancellation can never remove the
-      // agent's voice from what the mic hears -- every other defense here is
-      // a heuristic (the echo floor in vad.js). This is the guaranteed-
-      // correct fallback for a public demo on unknown hardware: no
-      // interruption is possible, but the agent can also never hear itself.
-      if (echoSafe && state.name === SPEAKING) {
-        if (!wasSuppressed) {
-          // Entering suppression for the first time this reply (or via a
-          // manual toggle mid-reply): a speculative recording may still be
-          // mid-accumulation from ambient sound during THINKING, since
-          // state.capturing is false there too and REPLY can arrive before
-          // the pending/discard edge below ever runs. Left alone, that
-          // recorder is never resolved for the whole reply, and the NEXT
-          // turn's single ondataavailable blob ends up spanning straight
-          // through the agent's own spoken reply -- reintroducing the exact
-          // self-echo failure the last nine commits exist to eliminate,
-          // just through the recording pipeline instead of the live VAD.
-          discardRecording();
-          wasPending = false;
-        }
-        wasSuppressed = true;
-        return;
-      }
-      if (wasSuppressed) {
-        // Detection was frozen for the whole reply, so the detector may be
-        // holding a stale nascent turn (loudSince set from a timestamp
-        // seconds in the past). A single throwaway process(0, now, false)
-        // call is not enough to clean that up: the "not loud" branch's
-        // dip-tolerance grace only starts counting from the moment it's
-        // called (quietSince is set to *now*), so it can't retroactively
-        // clear an old loudSince in one call -- and if the caller is
-        // already making sound on the very first real frame after resuming,
-        // that stale loudSince would make (nowMs - loudSince) look enormous
-        // and fire a false speech-start instantly instead of waiting out
-        // minSpeechMs/bargeInMinSpeechMs on the new sound. Recreating the
-        // detector guarantees a genuinely clean slate (loudSince, quietSince,
-        // speaking, echoFloor, wasStrict all reset) with no such gap.
-        vad = createEnergyVAD();
-        wasPending = false;
-        wasSuppressed = false;
-      }
       analyser.getFloatTimeDomainData(buf);
       let sum = 0;
       for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
@@ -257,7 +190,6 @@ function stopVadLoop() {
   rafId = null;
   vad = null;
   wasPending = false;
-  wasSuppressed = false;
 }
 
 function startRecording() {
@@ -338,46 +270,60 @@ async function send(blob) {
 
 // --- text to speech --------------------------------------------------------
 
-function speak(text, replyLang) {
-  window.speechSynthesis.cancel();
+async function speak(text, replyLang) {
   spokenText = text;
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = BCP47[replyLang] || BCP47.en;
-  utterance.rate = 1.05;
-  // onboundary reports how far speech has progressed. If the caller interrupts,
-  // this is how we know what they actually heard. Not every browser or voice
-  // fires it; when it does not, heardChars stays null and the server leaves
-  // history untouched.
-  utterance.onboundary = (e) => {
-    if (typeof e.charIndex === "number") heardChars = e.charIndex;
-  };
-  // Natural completion (not a barge-in): the caller heard the whole reply,
-  // so clear the interruption-tracking state before the next turn starts.
-  utterance.onend = () => {
+  heardChars = null;
+  const ctx = audioCtx;   // captured now: a hang-up during the awaits below
+                           // can null the global before this resumes
+  let buffer;
+  try {
+    const res = await fetch("/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ text, lang: replyLang }),
+    });
+    if (!res.ok) throw new Error(`tts failed: ${res.status}`);
+    const bytes = await res.arrayBuffer();
+    if (!ctx || ctx.state === "closed") return;   // hung up mid-fetch
+    buffer = await ctx.decodeAudioData(bytes);
+  } catch (err) {
+    // Synthesis, network, or decode failed -- nothing to speak. Move on
+    // rather than leaving the call stuck in SPEAKING forever.
+    spokenText = "";
+    dispatch("TTS_END");
+    return;
+  }
+  // The caller may have barged in (or hung up) while the round trip above
+  // was in flight; do not start playback for a reply the state machine has
+  // already moved past.
+  if (state.name !== SPEAKING) return;
+  ttsSource = ctx.createBufferSource();
+  ttsSource.buffer = buffer;
+  ttsSource.connect(ctx.destination);
+  ttsDurationMs = buffer.duration * 1000;
+  ttsStartedAt = performance.now();
+  ttsSource.onended = () => {
+    ttsSource = null;
     heardChars = null;
     spokenText = "";
     dispatch("TTS_END");
   };
-  utterance.onerror = (e) => {
-    // cancel() fires 'error' with "interrupted"/"canceled" — that is our own
-    // barge-in path, and cancelSpeech() has already recorded how much the
-    // caller heard. Only a real synthesis failure should discard it.
-    if (e.error !== "interrupted" && e.error !== "canceled") {
-      heardChars = null;
-      spokenText = "";
-    }
-    dispatch("TTS_END");
-  };
-  window.speechSynthesis.speak(utterance);
+  ttsSource.start();
 }
 
 function cancelSpeech() {
-  // cancel() fires 'error', not 'onend', so heardChars keeps whatever the last
-  // boundary reported. If no boundary ever fired we genuinely do not know how
-  // much the caller heard — Chrome's network-backed voices (the zh-CN default)
-  // never fire them — so we send nothing and leave history untouched rather
-  // than guessing zero, which would delete the whole reply.
-  window.speechSynthesis.cancel();
+  if (!ttsSource) return;
+  // Deterministic from elapsed playback time -- unlike the speechSynthesis
+  // onboundary event this replaces, which Chrome's network-backed zh-CN
+  // voice never fired, silently disabling heard_chars tracking for that
+  // language.
+  const elapsedMs = performance.now() - ttsStartedAt;
+  const fraction = ttsDurationMs > 0 ? Math.min(1, elapsedMs / ttsDurationMs) : 0;
+  heardChars = Math.round(spokenText.length * fraction);
+  ttsSource.onended = null;   // suppress TTS_END: this is a barge-in, not natural completion
+  ttsSource.stop();
+  ttsSource = null;
+  spokenText = "";
 }
 
 // --- controls --------------------------------------------------------------
@@ -417,17 +363,6 @@ document.querySelectorAll(".mode").forEach((btn) => {
     }
     render();
   });
-});
-
-echoSafeBtn.addEventListener("click", () => {
-  echoSafe = !echoSafe;
-  echoSafeBtn.classList.toggle("active", echoSafe);
-  // No other bookkeeping needed here: tick() re-checks `echoSafe &&
-  // state.name === SPEAKING` every frame, so flipping this while the agent
-  // is mid-reply takes effect on the very next frame either way -- turning
-  // it on starts suppressing immediately, turning it off resumes detection
-  // (via the wasSuppressed reset path) immediately. In push-to-talk mode
-  // the VAD loop never runs at all, so this flag is simply inert there.
 });
 
 talk.addEventListener("click", async () => {
