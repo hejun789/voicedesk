@@ -5,3 +5,5 @@ pytest==8.3.2
 fastapi==0.115.0
 uvicorn==0.30.6
 python-multipart==0.0.9
+piper-tts==1.4.2
+huggingface-hub==0.25.2

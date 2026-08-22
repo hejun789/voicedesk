@@ -14,6 +14,7 @@ from voicedesk.voice.limits import RateLimiter
 from voicedesk.voice.server import create_app
 from voicedesk.voice.session import SessionStore
 from voicedesk.voice.stt import GroqWhisper
+from voicedesk.voice.tts import PiperTTS
 
 
 def _log_retry(reason: str, wait_s: float, attempt: int) -> None:
@@ -80,7 +81,7 @@ def main() -> None:
         per_ip_limit=int(os.environ.get("PER_IP_DAILY_LIMIT", "8")),
         global_limit=int(os.environ.get("GLOBAL_DAILY_LIMIT", "200")),
     )
-    app = create_app(GroqWhisper(), sessions, limiter=limiter)
+    app = create_app(GroqWhisper(), sessions, limiter=limiter, tts=PiperTTS())
 
     host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "7860"))
