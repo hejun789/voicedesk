@@ -133,3 +133,19 @@ def test_text_with_no_speakable_content_raises_a_clear_error():
     tts = PiperTTS()
     with pytest.raises(TTSError, match="no audio"):
         tts.synthesize("，。、", "zh")
+
+
+def test_digits_bound_to_letters_stay_in_the_foreign_run():
+    # "Suite 4B" is one token. Splitting the digit off sends "4" to the
+    # Chinese voice and "B" to the English one, tearing a room number across
+    # two speakers mid-word. A digit only stays with the primary language
+    # when it stands alone ("200 号"), not when it is welded to letters.
+    assert _segment_by_script("地址是 Suite 4B", "zh") == [
+        ("zh", "地址是 "),
+        ("en", "Suite 4B"),
+    ]
+
+
+def test_standalone_digits_still_belong_to_the_primary_language():
+    assert _segment_by_script("地址是 200 号 4 室", "zh") == [
+        ("zh", "地址是 200 号 4 室")]

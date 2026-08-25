@@ -38,10 +38,13 @@ def _voice_repo_path(voice_id: str) -> str:
 # what a receptionist has to say, and they cannot be translated away, so the
 # reply is split by script and each run is spoken by the voice that owns it.
 #
-# Only LETTERS mark a foreign run. Digits and punctuation stay with the
-# primary language on purpose: "200 号 4 室" must be read in Chinese, and
-# handing "200" to the English voice would be worse than the problem.
-_LATIN_RUN = re.compile(r"[A-Za-z][A-Za-z'’.\-]*(?:[ 	]+[A-Za-z][A-Za-z'’.\-]*)*")
+# A run must CONTAIN a letter to be foreign, but a digit welded to letters
+# comes along with it. Both halves matter: "200 号 4 室" has no letters, so
+# it stays Chinese and is read in Chinese; "Suite 4B" is a single token, and
+# splitting the digit out would send "4" to the Chinese voice and "B" to the
+# English one, tearing a room number across two speakers mid-word.
+_WORD = r"[A-Za-z0-9]*[A-Za-z][A-Za-z0-9'’.\-]*"
+_LATIN_RUN = re.compile(rf"{_WORD}(?:[ 	]+{_WORD})*")
 _CJK_RUN = re.compile(r"[㐀-䶿一-鿿]+")
 _FOREIGN_RUN = {"zh": _LATIN_RUN, "en": _CJK_RUN}
 

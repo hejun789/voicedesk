@@ -437,3 +437,12 @@ python -m voicedesk.evals --lang zh --runs 3
   full round trip before speaking again. With a genuine reference signal in place,
   "Echo-safe" no longer bought anything a real interruption couldn't already survive, so
   the toggle was removed — barge-in is simply always on.
+  Self-hosting the voices surfaced a problem the browser's TTS had hidden: a Piper voice
+  speaks exactly one language, and the Chinese model phonemizes through espeak's `cmn`,
+  so English inside a Chinese reply was forced through a Mandarin sound inventory —
+  measured, it said "Springfield" in 0.45s where the English voice takes 0.74s, that is,
+  compressing the syllables away rather than pronouncing them. Brand and street names are
+  exactly what a receptionist has to say and cannot be translated away, so replies are now
+  split by script and each run is spoken by the voice that owns it, concatenated as raw
+  PCM. Single-script replies — the overwhelming majority — take a one-voice fast path and
+  pay nothing.
