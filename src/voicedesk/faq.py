@@ -1,6 +1,15 @@
 import re
 
-_STOP = {"what", "are", "your", "the", "is", "do", "you", "a", "an", "to", "of", "we"}
+# Function words carry no topic but do appear in section bodies, so leaving
+# them in lets a query match a section for no reason: "and" alone scored a
+# point against Hours, Insurance AND Services, which is enough noise to
+# reorder the sections when the real signal is one or two words. That
+# mattered once matching stopped being winner-take-all -- a section's score
+# is now compared against the best one, so a spurious point is not just a
+# tie-break, it can pull an unrelated section into the answer or push a real
+# one out.
+_STOP = {"what", "are", "your", "the", "is", "do", "you", "a", "an", "to",
+         "of", "we", "and", "or", "at", "on", "in", "for", "with", "any"}
 
 
 def _tokens(text: str) -> set[str]:
@@ -59,6 +68,28 @@ _TOPIC_ALIASES: dict[str, str] = {
 }
 
 
+# Callers ask two things in one breath far more often than one-section-per-
+# call assumes ("your hours, and do you take Cigna?"). Returning only the
+# top-scoring section silently drops half the question, and the model then
+# has to re-query -- a follow-up that mis-scores can loop it all the way to
+# the agent's iteration cap, which the caller experiences as the generic
+# "let me have someone call you back" instead of an answer. So every section
+# scoring at least this fraction of the best is returned together.
+#
+# Half is measured, not guessed. Against the real clinic docs it is the one
+# cut that separates a genuine second topic from incidental overlap:
+# "你们几点营业？接受哪些保险？" scores 4 against 5 (0.8 -- both topics are
+# real), while "你们的地址在哪里？" scores 1 against 3 (0.33 -- the hours
+# section only matched on a pronoun gram shared with the question).
+_SECONDARY_MATCH_RATIO = 0.5
+
+
+def _scored_sections(doc: str, q: set[str], score) -> list[tuple[int, str]]:
+    """Every section matching `q` at all, in document order."""
+    return [(s, body) for title, body in _sections(doc)
+            if (s := score(q, title, body)) > 0]
+
+
 def answer_faq(query: str, doc_path: str = "clinic_info.md") -> str:
     with open(doc_path, encoding="utf-8") as f:
         doc = f.read()
@@ -74,19 +105,17 @@ def answer_faq(query: str, doc_path: str = "clinic_info.md") -> str:
     if not q:
         return "NO_MATCH"
 
-    best_body, best_score = "NO_MATCH", 0
-    for title, body in _sections(doc):
-        s = score(q, title, body)
-        if s > best_score:
-            best_body, best_score = body, s
+    scored = _scored_sections(doc, q, score)
 
-    if best_score == 0 and score is _score_words:
+    if not scored and score is _score_words:
         anchors = {_TOPIC_ALIASES[w] for w in q if w in _TOPIC_ALIASES}
         alias_q = {g for anchor in anchors for g in _ngrams(anchor)}
         if alias_q:
-            for title, body in _sections(doc):
-                s = _score_ngrams(alias_q, title, body)
-                if s > best_score:
-                    best_body, best_score = body, s
+            scored = _scored_sections(doc, alias_q, _score_ngrams)
 
-    return best_body if best_score > 0 else "NO_MATCH"
+    if not scored:
+        return "NO_MATCH"
+
+    best = max(s for s, _ in scored)
+    return "\n\n".join(body for s, body in scored
+                       if s >= best * _SECONDARY_MATCH_RATIO)
