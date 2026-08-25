@@ -8,6 +8,7 @@ audio node the browser's AEC *can* reference.
 """
 import io
 import os
+import re
 import wave
 from pathlib import Path
 from typing import Protocol
@@ -26,6 +27,51 @@ def _voice_repo_path(voice_id: str) -> str:
     lang_region, name, quality = voice_id.split("-")
     lang = lang_region.split("_")[0]
     return f"{lang}/{lang_region}/{name}/{quality}/{voice_id}"
+
+
+# A Piper voice speaks exactly one language: zh_CN-huayan phonemizes through
+# espeak's `cmn` and was trained only on Mandarin phonetics, so Latin text
+# inside a Chinese reply is forced through a sound inventory that has no way
+# to render it. Measured: it says "Springfield" in 0.45s where the English
+# voice takes 0.74s -- it is compressing the syllables away, not pronouncing
+# them. Brand and street names ("Delta Dental", "Market Street") are exactly
+# what a receptionist has to say, and they cannot be translated away, so the
+# reply is split by script and each run is spoken by the voice that owns it.
+#
+# Only LETTERS mark a foreign run. Digits and punctuation stay with the
+# primary language on purpose: "200 号 4 室" must be read in Chinese, and
+# handing "200" to the English voice would be worse than the problem.
+_LATIN_RUN = re.compile(r"[A-Za-z][A-Za-z'’.\-]*(?:[ 	]+[A-Za-z][A-Za-z'’.\-]*)*")
+_CJK_RUN = re.compile(r"[㐀-䶿一-鿿]+")
+_FOREIGN_RUN = {"zh": _LATIN_RUN, "en": _CJK_RUN}
+
+
+def _segment_by_script(text: str, primary: str) -> list[tuple[str, str]]:
+    """Split `text` into (language, run) pairs so each run can be spoken by
+    the voice that owns its script.
+
+    Returns a single segment when the text is all one script -- the common
+    case, and the one that must stay free: no second model load, no
+    concatenation, no added latency.
+    """
+    if not text:
+        return []
+    pattern = _FOREIGN_RUN.get(primary)
+    if pattern is None:
+        return [(primary, text)]
+    foreign = "en" if primary == "zh" else "zh"
+    segments: list[tuple[str, str]] = []
+    last = 0
+    for match in pattern.finditer(text):
+        if match.start() > last:
+            segments.append((primary, text[last:match.start()]))
+        segments.append((foreign, match.group()))
+        last = match.end()
+    if not segments:
+        return [(primary, text)]
+    if last < len(text):
+        segments.append((primary, text[last:]))
+    return segments
 
 
 class TTSError(Exception):
@@ -75,13 +121,59 @@ class PiperTTS:
                 str(model_path), config_path=str(model_path) + ".json")
         return self._voices[lang]
 
-    def synthesize(self, text: str, language: str = DEFAULT_LANG) -> bytes:
+    def _synthesize_run(self, text: str, language: str):
+        """Raw PCM frames for one single-language run, plus the wave params
+        they were produced with.
+
+        Piper emits no audio at all for input with nothing speakable in it --
+        a lone "、" between two brand names is enough -- and `wave` then fails
+        on close with the opaque "# channels not specified", because no
+        header was ever written. That is a silent run, not a failure: report
+        it as empty frames and let the caller decide whether the whole reply
+        came to nothing.
+        """
+        voice = self._voice_for(language)
+        buf = io.BytesIO()
         try:
-            voice = self._voice_for(language)
-            buf = io.BytesIO()
             with wave.open(buf, "wb") as wav_file:
                 voice.synthesize_wav(text, wav_file)
-            return buf.getvalue()
+        except wave.Error:
+            return b"", None
+        with wave.open(io.BytesIO(buf.getvalue())) as f:
+            return f.readframes(f.getnframes()), f.getparams()
+
+    def synthesize(self, text: str, language: str = DEFAULT_LANG) -> bytes:
+        try:
+            lang = normalize_lang(language)
+            frames: list[bytes] = []
+            params = None
+            for run_lang, run_text in _segment_by_script(text, lang):
+                run_frames, run_params = self._synthesize_run(run_text, run_lang)
+                if not run_frames:
+                    continue
+                if params is None:
+                    params = run_params
+                elif (run_params.framerate, run_params.sampwidth,
+                      run_params.nchannels) != (params.framerate,
+                                                params.sampwidth,
+                                                params.nchannels):
+                    # Concatenating raw PCM is only valid while every voice
+                    # agrees on rate, width and channel count (all current
+                    # Piper medium voices are 22050Hz mono 16-bit). Refuse
+                    # loudly rather than emit audio that plays at the wrong
+                    # speed, which is far harder to diagnose from a demo.
+                    raise TTSError(
+                        f"voice format mismatch: {run_params} vs {params}")
+                frames.append(run_frames)
+            if params is None:
+                raise TTSError(f"no audio produced for {text!r}")
+            out = io.BytesIO()
+            with wave.open(out, "wb") as wav_file:
+                wav_file.setnchannels(params.nchannels)
+                wav_file.setsampwidth(params.sampwidth)
+                wav_file.setframerate(params.framerate)
+                wav_file.writeframes(b"".join(frames))
+            return out.getvalue()
         except TTSError:
             raise
         except Exception as e:  # noqa: BLE001 - translated to TTSError
