@@ -1,5 +1,6 @@
 import json
 import re
+import sys
 from datetime import date
 from voicedesk.lang import DEFAULT_LANG, normalize_lang
 from voicedesk.llm import LLMClient, LLMError, Message
@@ -118,7 +119,17 @@ class Agent:
         for _ in range(MAX_ITERS):
             try:
                 msg: Message = self.llm.complete(self.messages, TOOL_SCHEMAS)
-            except LLMError:
+            except LLMError as e:
+                # The caller hears something deliberately generic, but an
+                # operator needs the cause: every LLM failure produces the
+                # same reply, so without this the logs cannot tell a bad
+                # model id from a spent quota from a transient 500. A live
+                # deploy answered every single question with the fallback
+                # because GROQ_MODEL was unset and the built-in default had
+                # been decommissioned upstream -- each completion returned
+                # 404 model_not_found, and nothing anywhere said so.
+                print(f"[agent] LLM call failed, using fallback reply: {e}",
+                      file=sys.stderr, flush=True)
                 self.messages.append({"role": "assistant", "content": _FALLBACK})
                 return _FALLBACK
             if not msg.tool_calls:

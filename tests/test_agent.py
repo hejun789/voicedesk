@@ -215,3 +215,16 @@ def test_build_system_prompt_zh_requires_chinese_faq_queries():
     prompt = build_system_prompt(date(2026, 7, 10), lang="zh")
     assert "answer_faq" in prompt
     assert "中文关键词" in prompt
+
+
+def test_llm_error_names_its_cause_on_stderr(db, capsys):
+    # The fallback reply is deliberately generic to the caller, but swallowing
+    # the exception silently left an operator with nothing to go on. A real
+    # deploy answered every question with the fallback for exactly this
+    # reason: GROQ_MODEL was unset, so it used a default Groq had since
+    # decommissioned, and every completion returned 404 model_not_found. The
+    # reply looked identical to a tool-loop failure and the logs said nothing.
+    agent = Agent(db, _RaisingLLM())
+    assert agent.respond("book me monday 9am") == _FALLBACK
+    err = capsys.readouterr().err
+    assert "tool_use_failed" in err, f"cause not logged, stderr was: {err!r}"

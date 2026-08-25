@@ -4,7 +4,14 @@ import re
 import time
 from voicedesk.llm import Message, ToolCall, LLMError, QuotaExhausted
 
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+# Groq retires models on its own schedule, and a retired id fails with a 404
+# on every single completion. The agent turns any LLM error into its generic
+# fallback reply, so a stale default here does not look like a configuration
+# problem -- it looks like the agent is broken, answering "let me have a team
+# member call you back" to every question. A deployment that never set
+# GROQ_MODEL did exactly that, for days. Verify this id is still live before
+# trusting it: https://console.groq.com/docs/models
+DEFAULT_MODEL = "openai/gpt-oss-120b"
 MAX_BACKOFF_S = 180.0
 TOKEN_HEADROOM = 3000  # roughly one agent call's worth of tokens
 # These duration bounds are a backstop, not the primary signal: Groq tells us
