@@ -2,64 +2,195 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>VoiceDesk — BrightSmile Dental</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 3rem auto;
-           padding: 0 1rem; color: #1a1a1a; }
-    h1 { font-size: 1.4rem; }
-    #talk { width: 100%; padding: 1.5rem; font-size: 1.1rem; border-radius: 12px;
-            border: 2px solid #2563eb; background: #eff6ff; color: #1e40af;
-            cursor: pointer; user-select: none; }
-    #talk.recording { background: #dc2626; border-color: #dc2626; color: #fff; }
+    /* Light palette on :root, dark redefined under prefers-color-scheme, so
+       the page follows the visitor's OS setting with no toggle and no JS. */
+    :root {
+      --bg: #f4f6f9;
+      --surface: #ffffff;
+      --surface-2: #f1f3f7;
+      --text: #171a20;
+      --muted: #6b7280;
+      --border: #e3e7ee;
+      --accent: #2563eb;
+      --accent-soft: #e8efff;
+      --idle: #2563eb;      --idle-bg: #eff5ff;
+      --live: #16a34a;      --live-bg: #eefbf2;
+      --rec: #dc2626;       --rec-bg: #fef1f1;
+      --think: #7c3aed;     --think-bg: #f4efff;
+      --speak: #d97706;     --speak-bg: #fff8ec;
+      --shadow: 0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0e1014;
+        --surface: #171a21;
+        --surface-2: #1e222b;
+        --text: #e8eaee;
+        --muted: #98a0ad;
+        --border: #272c36;
+        --accent: #6592ff;
+        --accent-soft: #1b2540;
+        --idle: #6592ff;    --idle-bg: #172038;
+        --live: #4ade80;    --live-bg: #12261a;
+        --rec: #f87171;     --rec-bg: #2a1618;
+        --think: #a78bfa;   --think-bg: #221a33;
+        --speak: #fbbf24;   --speak-bg: #2a2010;
+        --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 2.5rem 1rem 4rem;
+      background: var(--bg); color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+    .shell { max-width: 34rem; margin: 0 auto; }
+
+    header { margin-bottom: 1.5rem; }
+    .brand { display: flex; align-items: center; gap: .625rem; }
+    /* Decorative only, and deliberately NOT inside #talk or any element whose
+       textContent app.js overwrites. */
+    .brand .dot {
+      width: .625rem; height: .625rem; border-radius: 50%;
+      background: var(--accent); flex: none;
+    }
+    h1 { font-size: 1.15rem; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+    .sub { margin: .5rem 0 0; color: var(--muted); font-size: .9rem; }
+    .sub em { color: var(--text); font-style: normal; font-weight: 500; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 18px; padding: 1.25rem; box-shadow: var(--shadow);
+    }
+
+    /* Segmented controls: language and mode are settings, not the main event,
+       so they read as one quiet strip above the call button. */
+    .controls { display: flex; gap: .5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .seg {
+      display: flex; gap: .1875rem; flex: 1 1 12rem; min-width: 0;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 11px; padding: .1875rem;
+    }
+    .seg button {
+      flex: 1; min-width: 0; padding: .4375rem .5rem;
+      font: inherit; font-size: .8125rem; font-weight: 500;
+      color: var(--muted); background: none; border: 0; border-radius: 8px;
+      cursor: pointer; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; transition: background .15s, color .15s;
+    }
+    .seg button:hover { color: var(--text); }
+    .seg button.active {
+      background: var(--surface); color: var(--text);
+      box-shadow: 0 1px 2px rgba(16,24,40,.08);
+    }
+
+    /* The call button. All state feedback is background/border/shadow on the
+       button itself -- never child elements, which app.js's textContent
+       assignment would destroy. */
+    #talk {
+      display: block; width: 100%; min-height: 5.5rem;
+      padding: 1.25rem 1rem; font: inherit; font-size: 1.05rem; font-weight: 600;
+      border-radius: 14px; border: 1.5px solid var(--idle);
+      background: var(--idle-bg); color: var(--idle);
+      cursor: pointer; user-select: none; -webkit-user-select: none;
+      transition: background .18s, border-color .18s, color .18s;
+    }
     #talk:disabled { opacity: .5; cursor: default; }
-    .turn { margin-top: 1.5rem; padding: 1rem; border-radius: 10px; background: #f5f5f5; }
-    .label { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em;
-             color: #666; }
-    .you { font-weight: 600; }
-    #timings { margin-top: 1rem; font-family: ui-monospace, monospace; font-size: .8rem;
-               color: #555; }
-    .hint { color: #666; font-size: .9rem; }
-    #langs { display: flex; gap: .5rem; margin-bottom: 1rem; }
-    .lang { flex: 1; padding: .6rem; border-radius: 8px; border: 1px solid #ccc;
-            background: #fff; cursor: pointer; font-size: .95rem; }
-    .lang.active { background: #1e40af; border-color: #1e40af; color: #fff; }
-    #modes, #echoSafeRow { display: flex; gap: .5rem; margin-bottom: 1rem; }
-    .mode, .echo-safe { flex: 1; padding: .5rem; border-radius: 8px; border: 1px solid #ccc;
-            background: #fff; cursor: pointer; font-size: .85rem; }
-    .mode.active, .echo-safe.active { background: #475569; border-color: #475569; color: #fff; }
-    #talk.listening { background: #f0fdf4; border-color: #16a34a; color: #15803d; }
-    #talk.speaking { background: #fefce8; border-color: #ca8a04; color: #a16207; }
+    #talk.listening {
+      border-color: var(--live); background: var(--live-bg); color: var(--live);
+      animation: breathe 2.4s ease-in-out infinite;
+    }
+    #talk.recording {
+      border-color: var(--rec); background: var(--rec-bg); color: var(--rec);
+      animation: pulse 1.4s ease-out infinite;
+    }
+    #talk.thinking {
+      border-color: var(--think); background: var(--think-bg); color: var(--think);
+    }
+    #talk.speaking {
+      border-color: var(--speak); background: var(--speak-bg); color: var(--speak);
+    }
+    /* Listening: a slow, calm breath -- the app is waiting, not urgent. */
+    @keyframes breathe {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,.16); }
+      50%      { box-shadow: 0 0 0 .5rem rgba(22,163,74,0); }
+    }
+    /* Recording: a faster ring so it is unmistakable that the mic is live. */
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(220,38,38,.28); }
+      100% { box-shadow: 0 0 0 .875rem rgba(220,38,38,0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #talk.listening, #talk.recording { animation: none; }
+    }
+
+    /* Conversation. Two speakers, so they are visually opposed rather than
+       stacked in identical grey slots. */
+    .thread { margin-top: 1.25rem; display: grid; gap: 1rem; }
+    .msg { display: grid; gap: .3125rem; }
+    .who {
+      font-size: .6875rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--muted);
+    }
+    .bubble {
+      padding: .75rem .875rem; border-radius: 12px;
+      background: var(--surface-2); font-size: .9375rem;
+      overflow-wrap: anywhere;
+    }
+    .msg.you .bubble {
+      background: var(--accent-soft); font-weight: 500;
+    }
+    #timings {
+      margin-top: .25rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: .6875rem; color: var(--muted); min-height: 1em;
+    }
   </style>
 </head>
 <body>
-  <h1>VoiceDesk — BrightSmile Dental</h1>
-  <p class="hint">Click "Start call", then just start speaking — the receptionist
-    listens for when you stop. "Echo-safe" is on by default so it never talks over
-    itself; turn it off (e.g. on headphones) to interrupt it mid-sentence. Try:
-    <em>"Book me Monday July 13th 2026 at 9am, Jane Doe, 5551234, for a cleaning."</em></p>
+  <div class="shell">
+    <header>
+      <div class="brand">
+        <span class="dot"></span>
+        <h1>VoiceDesk — BrightSmile Dental</h1>
+      </div>
+      <p class="sub">Start the call, then just speak — it listens for when you
+        stop, and you can talk over it any time to interrupt.
+        Try: <em>“Book me Monday July 13th 2026 at 9am, Jane Doe, 5551234,
+        for a cleaning.”</em></p>
+    </header>
 
-  <div id="langs">
-    <button class="lang active" data-lang="en">English</button>
-    <button class="lang" data-lang="zh">中文</button>
-  </div>
+    <div class="card">
+      <div class="controls">
+        <div class="seg" id="langs">
+          <button class="lang active" data-lang="en">English</button>
+          <button class="lang" data-lang="zh">中文</button>
+        </div>
+        <div class="seg" id="modes">
+          <button class="mode active" data-mode="hands-free">Hands-free</button>
+          <button class="mode" data-mode="ptt">Hold to talk</button>
+        </div>
+      </div>
 
-  <div id="modes">
-    <button class="mode active" data-mode="hands-free">Hands-free</button>
-    <button class="mode" data-mode="ptt">Hold to talk</button>
-  </div>
+      <button id="talk">Hold to talk</button>
 
-  <div id="echoSafeRow">
-    <button id="echoSafeToggle" class="echo-safe">Echo-safe</button>
-  </div>
-
-  <button id="talk">Hold to talk</button>
-
-  <div class="turn">
-    <div class="label">You said</div>
-    <div id="transcript" class="you">—</div>
-    <div class="label" style="margin-top:.75rem">Receptionist</div>
-    <div id="reply">—</div>
-    <div id="timings"></div>
+      <div class="thread">
+        <div class="msg you">
+          <div class="who">You said</div>
+          <div id="transcript" class="bubble">—</div>
+        </div>
+        <div class="msg">
+          <div class="who">Receptionist</div>
+          <div id="reply" class="bubble">—</div>
+        </div>
+      </div>
+      <div id="timings"></div>
+    </div>
   </div>
 
   <script type="module" src="/static/app.js"></script>

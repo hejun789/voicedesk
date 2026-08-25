@@ -61,13 +61,45 @@ test("barge-in cancels speech and starts recording", () => {
   assert.deepEqual(actions, ["CANCEL_TTS", "START_RECORDING"]);
 });
 
-test("speech during thinking is ignored — no barge-in while the LLM runs", () => {
+test("speech during thinking interrupts it: the caller can talk over the LLM call", () => {
+  // The server still cannot cancel the in-flight agent call (see /turn), so
+  // it runs to completion regardless -- but the caller does not have to wait
+  // for it. DISCARD_PENDING_REPLY tells app.js to report zero heard
+  // characters on the next turn it sends, which the server's
+  // truncate_last_reply() uses to drop the stale reply from history once it
+  // lands (see the REPLY test below for the other half of this).
   let s = next(initialState(), "ARM").state;
   s = next(s, "SPEECH_START").state;
   s = next(s, "SPEECH_END").state;
   assert.equal(s.name, THINKING);
   const { state, actions } = next(s, "SPEECH_START");
-  assert.equal(state.name, THINKING);
+  assert.equal(state.name, LISTENING);
+  assert.equal(state.capturing, true);
+  assert.deepEqual(actions, ["DISCARD_PENDING_REPLY", "START_RECORDING"]);
+});
+
+test("push-to-talk: pressing again during thinking interrupts it the same way", () => {
+  let s = initialState("ptt");
+  s = next(s, "PTT_DOWN").state;
+  s = next(s, "PTT_UP").state;
+  assert.equal(s.name, THINKING);
+  const { state, actions } = next(s, "PTT_DOWN");
+  assert.equal(state.name, LISTENING);
+  assert.equal(state.capturing, true);
+  assert.deepEqual(actions, ["DISCARD_PENDING_REPLY", "START_RECORDING"]);
+});
+
+test("a reply that lands after a thinking interrupt is not spoken", () => {
+  // Mirrors "a late reply does not resurrect speaking after a barge-in"
+  // above, but for a barge-in that happened during THINKING instead of
+  // SPEAKING.
+  let s = next(initialState(), "ARM").state;
+  s = next(s, "SPEECH_START").state;
+  s = next(s, "SPEECH_END").state;
+  s = next(s, "SPEECH_START").state;   // interrupts THINKING
+  assert.equal(s.name, LISTENING);
+  const { state, actions } = next(s, "REPLY");
+  assert.equal(state.name, LISTENING);
   assert.deepEqual(actions, []);
 });
 

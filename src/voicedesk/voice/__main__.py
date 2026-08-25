@@ -9,11 +9,12 @@ from dotenv import load_dotenv
 from voicedesk.agent import Agent, build_system_prompt
 from voicedesk.db import init_db
 from voicedesk.groq_client import GroqLLM
-from voicedesk.lang import faq_doc_for
+from voicedesk.lang import LANGUAGES, faq_doc_for
 from voicedesk.voice.limits import RateLimiter
 from voicedesk.voice.server import create_app
 from voicedesk.voice.session import SessionStore
 from voicedesk.voice.stt import GroqWhisper
+from voicedesk.voice.tts import PiperTTS
 
 
 def _log_retry(reason: str, wait_s: float, attempt: int) -> None:
@@ -80,7 +81,27 @@ def main() -> None:
         per_ip_limit=int(os.environ.get("PER_IP_DAILY_LIMIT", "8")),
         global_limit=int(os.environ.get("GLOBAL_DAILY_LIMIT", "200")),
     )
-    app = create_app(GroqWhisper(), sessions, limiter=limiter)
+    # Deliberately generous relative to `limiter`: one turn makes exactly one
+    # /tts call, so this only needs to guard against pathological reuse, not
+    # normal traffic.
+    tts_limiter = RateLimiter(
+        per_ip_limit=int(os.environ.get("PER_IP_TTS_DAILY_LIMIT", "40")),
+        global_limit=int(os.environ.get("GLOBAL_TTS_DAILY_LIMIT", "1000")),
+    )
+    tts = PiperTTS()
+    app = create_app(GroqWhisper(), sessions, limiter=limiter, tts=tts,
+                     tts_limiter=tts_limiter)
+
+    # Piper's first call per language pays a 1.8-2.4s ONNX model load, which
+    # would otherwise land inside the first reply's /tts call of every
+    # container lifetime. Paying that cost here instead — a slower boot —
+    # keeps it out of a caller's first turn.
+    for warmup_lang in LANGUAGES:
+        try:
+            tts.synthesize("ok", warmup_lang)
+        except Exception as e:  # noqa: BLE001 - warm-up must never block startup
+            print(f"[voice] TTS warm-up failed for {warmup_lang!r}: {e}",
+                  file=sys.stderr, flush=True)
 
     host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "7860"))

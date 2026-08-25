@@ -39,8 +39,21 @@ export function next(state, event) {
         actions: ["CANCEL_TTS", "START_RECORDING"],
       };
     }
-    // Deliberately NOT allowed while THINKING: the server cannot cancel an
-    // in-flight agent call, so interrupting there would desync history.
+    // Barge-in during THINKING: the server still cannot cancel the in-flight
+    // agent call, so it runs to completion and its reply lands in history as
+    // normal — but the caller does not have to sit through it. The REPLY
+    // handler below already drops a reply that arrives after the caller has
+    // moved off THINKING; DISCARD_PENDING_REPLY additionally tells the next
+    // turn's request to report zero heard characters, so the server's
+    // truncate_last_reply() removes it from the agent's own history too —
+    // otherwise the agent would believe it said something the caller never
+    // heard and could reference it later.
+    if (name === THINKING) {
+      return {
+        state: { ...state, name: LISTENING, capturing: true },
+        actions: ["DISCARD_PENDING_REPLY", "START_RECORDING"],
+      };
+    }
     if (name === LISTENING || name === IDLE) {
       if (capturing) return stay(state);
       return {

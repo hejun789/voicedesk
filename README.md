@@ -23,10 +23,10 @@ eval itself](#and-two-bugs-in-the-eval-itself).**
 ## Live demo
 
 **🎙️ Try it: <https://voicedesk-ch1y.onrender.com>** — start the call and just speak, in English
-or 中文, to book an appointment by voice. It listens for when you stop talking. "Echo-safe" is on
-by default (the mic ignores the agent's own voice, so it never talks over itself); turn it off to
-interrupt it mid-sentence — best on headphones, since without real acoustic echo cancellation a
-laptop's speakers-into-mic setup can occasionally hear itself. Chrome or Edge (needs a microphone).
+or 中文, to book an appointment by voice. It listens for when you stop talking, and you can
+interrupt it mid-sentence at any time — replies are synthesized server-side and played through
+the page's own Web Audio graph, which is what gives the mic's echo cancellation a real signal to
+cancel against. Chrome or Edge (needs a microphone).
 
 > It runs on a free tier: it sleeps when idle (≈30s to wake on the first hit) and is
 > rate-limited, so it may reach its daily cap — in which case it says so politely.
@@ -67,7 +67,8 @@ CLI (text) ─────────────┘   (LLM loop)         (7 to
                               │
                          LLMClient protocol          Voice turn: POST /turn
                               ├── GroqLLM (prod)      browser audio → Groq Whisper (STT)
-                              └── FakeLLM (tests)     → Agent.respond() → browser speaks reply
+                              └── FakeLLM (tests)     → Agent.respond() → POST /tts (Piper)
+                                                         → Web Audio playback
 ```
 
 Every boundary is deliberate:
@@ -77,9 +78,10 @@ Every boundary is deliberate:
 - **The agent knows nothing about the provider.** It talks to an `LLMClient`
   protocol, so the entire **296-test** suite runs offline against a `FakeLLM` — no
   network, no API key, no cost.
-- **The agent knows nothing about audio.** That's why the voice layer (Groq Whisper
-  in, browser speech-synthesis out) was an *additive* change that never touched the
-  agent core — the same `Agent.respond(text) -> str` the CLI and the eval harness call.
+- **The agent knows nothing about audio.** That's why the voice layer (Groq Whisper in,
+  self-hosted Piper TTS out over `POST /tts`, played through the page's own Web Audio
+  graph) was an *additive* change that never touched the agent core — the same
+  `Agent.respond(text) -> str` the CLI and the eval harness call.
 
 ---
 
@@ -207,10 +209,12 @@ failure (a dip-tolerance bug that made barge-in physically impossible, first-wor
 clipping, a fixed threshold that only worked for one voice, an onset calibration race,
 a floor that converged too slowly) and each was eventually beaten by another one — because
 the Web Speech API exposes no handle on its own audio stream, so real acoustic echo
-cancellation isn't possible here, and every fix is a heuristic on a losing footing.
-**Fix:** rather than keep tuning against unknown hardware, "Echo-safe" is on by default —
-the mic is ignored entirely while the agent speaks, which is guaranteed correct regardless
-of speakers, mic, or voice. Barge-in is opt-in via the toggle, most reliable on headphones.
+cancellation wasn't possible under that design, and every fix was a heuristic on a losing footing.
+**Fix (Phase 6):** rather than keep tuning against unknown hardware, "Echo-safe" shipped on by
+default — the mic ignored entirely while the agent spoke, guaranteed correct regardless of
+speakers, mic, or voice, with barge-in as an opt-in toggle. **Superseded in Phase 7** (see the
+roadmap): moving TTS server-side gave the browser's own echo cancellation a real signal to
+reference, and the toggle was removed — barge-in is simply always on now.
 
 **12. Rapid typing near the mic could spawn a spurious turn.** The dip-tolerance fix in
 finding 11 (added so natural pauses *between syllables* don't cut off a sentence) also
@@ -342,14 +346,13 @@ $env:PYTHONPATH = "src"; python -m voicedesk.voice
 ```
 Open <http://127.0.0.1:7860>, click "Start call", and speak. The app detects when you
 stop talking and sends your input to Groq Whisper for transcription. The agent takes the
-action and the browser speaks the reply back. "Echo-safe" is on by default (the mic
-ignores the agent's own voice while it talks, so it never interrupts itself); turn it off
-to interrupt the agent mid-sentence — most reliable on headphones, since without real
-acoustic echo cancellation a speakers-into-mic setup can occasionally hear its own reply.
-The app also includes a "Hold to talk" toggle if you prefer push-to-talk mode. Each turn
-shows its latency breakdown (stt / agent / total).
+action, and the reply is synthesized server-side (self-hosted Piper) and played back
+through the page's own Web Audio graph — a real, page-controlled audio node the mic's
+echo cancellation can reference, so you can interrupt the agent mid-sentence at any time,
+including while it's still "thinking." The app also includes a "Hold to talk" toggle if
+you prefer push-to-talk mode. Each turn shows its latency breakdown (stt / agent / total).
 
-Use Chrome or Edge — it needs `MediaRecorder` and the Web Speech API.
+Use Chrome or Edge — it needs `MediaRecorder` and the Web Audio API.
 
 ### Run the tests (296 Python + 58 JavaScript, fully offline — no API key needed)
 ```powershell
@@ -373,11 +376,11 @@ used. Set `GROQ_MODEL` in `.env` to compare models.
 
 Verified end to end against the live API: a Mandarin caller books an appointment by voice,
 the agent reads the phone number back digit by digit in Chinese (五五五一二三四), and the
-browser speaks the reply in a Mandarin voice.
+reply is synthesized in a Mandarin Piper voice.
 
 The agent takes calls in English or Chinese. Language is **explicit configuration, not
 inference** — a toggle on the page sends `lang` with each turn, which selects Whisper's
-language, the clinic document, the system prompt, and the browser's TTS voice. Whisper can
+language, the clinic document, the system prompt, and the Piper TTS voice. Whisper can
 auto-detect, but it is unreliable on short utterances and would make every downstream
 choice depend on a guess.
 
@@ -419,7 +422,27 @@ python -m voicedesk.evals --lang zh --runs 3
   default: energy-based voice-activity detection, barge-in while the agent is speaking,
   and server-side history truncation so an interrupted reply isn't misremembered. Six
   rounds of real-microphone testing found what no offline test could (see findings
-  #11–13 above) and led to the honest call: echo-safe mode (mic muted while the agent
-  talks) ships as the default, with barge-in available as a documented opt-in — because
-  the Web Speech API exposes no handle on its own audio, so true echo cancellation isn't
-  possible here. Push-to-talk survives as a fallback toggle.
+  #11–13 above), each fixing a real live-microphone failure and each beaten by the next,
+  because `window.speechSynthesis` exposes no handle on its own audio — there was no
+  reference signal for the browser's echo cancellation to work with, so every heuristic
+  was tuning against a problem it couldn't actually solve. Led to the honest call, at the
+  time: echo-safe mode (mic muted while the agent talks) shipped as the default, with
+  barge-in available as a documented opt-in. Push-to-talk survives as a fallback toggle.
+  Revisited in Phase 7.
+- **Phase 7 — interruptible barge-in** ✅ replaced `window.speechSynthesis` with
+  self-hosted Piper TTS (`POST /tts`), played back through the page's own Web Audio
+  graph — a real, page-controlled audio node the mic's `echoCancellation: true` can
+  finally treat as a reference signal, which is what Phase 6's heuristics were missing
+  all along. THINKING became interruptible too, so a caller no longer has to wait out a
+  full round trip before speaking again. With a genuine reference signal in place,
+  "Echo-safe" no longer bought anything a real interruption couldn't already survive, so
+  the toggle was removed — barge-in is simply always on.
+  Self-hosting the voices surfaced a problem the browser's TTS had hidden: a Piper voice
+  speaks exactly one language, and the Chinese model phonemizes through espeak's `cmn`,
+  so English inside a Chinese reply was forced through a Mandarin sound inventory —
+  measured, it said "Springfield" in 0.45s where the English voice takes 0.74s, that is,
+  compressing the syllables away rather than pronouncing them. Brand and street names are
+  exactly what a receptionist has to say and cannot be translated away, so replies are now
+  split by script and each run is spoken by the voice that owns it, concatenated as raw
+  PCM. Single-script replies — the overwhelming majority — take a one-voice fast path and
+  pay nothing.

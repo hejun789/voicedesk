@@ -13,3 +13,7 @@ __pycache__/
 .pytest_cache/
 huggingface-space-README.md
 README.md
+# Fetched at build time by download_voices.py (RUN, see Dockerfile), never
+# COPY'd -- a local checkout has ~121MB here that would otherwise be sent
+# to the daemon as build context for nothing.
+voices/
