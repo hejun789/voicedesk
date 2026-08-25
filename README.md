@@ -334,6 +334,15 @@ pip install -r requirements.txt
 ```
 Put the real key in `.env` (gitignored), never in `.env.example`.
 
+Every command below needs that virtualenv active. A new terminal starts without it, and
+the failure is a confusing `ModuleNotFoundError: No module named 'fastapi'` rather than
+anything that mentions virtualenvs — so re-activate first:
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+Or skip activation entirely by calling the interpreter directly, which works from any
+shell: replace `python` with `.\.venv\Scripts\python.exe` in any command below.
+
 ### Talk to the agent
 ```powershell
 $env:PYTHONPATH = "src"; python -m voicedesk.cli
