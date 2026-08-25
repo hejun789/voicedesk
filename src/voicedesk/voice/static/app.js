@@ -118,9 +118,25 @@ function render() {
   }
 }
 
+// Diagnostic tracing, ?debug=1 only -- the same principle as the overlay
+// above: the interesting failures here are timing-dependent and leave no
+// trace in the DOM. Added while chasing a live hang where the call stuck in
+// THINKING after a barge-in, which stopped reproducing before it was root
+// caused. It is kept precisely because it was never explained: the state
+// transitions and the /turn and /tts status codes are exactly what would
+// identify it if it returns, and none of them are recoverable after the
+// fact. Costs nothing for an ordinary visitor -- debugEl is null unless
+// ?debug=1 is set.
+function trace(...args) {
+  if (debugEl) console.log("[vd]", performance.now().toFixed(0), ...args);
+}
+
 function dispatch(event) {
+  const from = `${state.name}${state.capturing ? "+cap" : ""}`;
   const result = next(state, event);
   state = result.state;
+  trace("dispatch", event, `${from} -> ${state.name}${state.capturing ? "+cap" : ""}`,
+        result.actions.length ? result.actions.join(",") : "(no actions)");
   for (const action of result.actions) runAction(action);
   render();
 }
@@ -247,6 +263,7 @@ function discardRecording() {
 }
 
 function stopRecordingAndSend() {
+  trace("stopRecordingAndSend", "recorder=" + (recorder ? recorder.state : "null"));
   if (recorder && recorder.state === "recording") recorder.stop();
   // Nothing to stop (e.g. the mic track ended and MediaRecorder self-stopped):
   // without this the machine would sit in THINKING forever and the call is dead.
@@ -259,6 +276,7 @@ let pendingReply = "";
 let pendingLang = "en";
 
 async function send(blob) {
+  trace("send ENTER", "blobSize=" + (blob ? blob.size : "null"));
   if (!blob || blob.size < 1000) {
     transcriptEl.textContent = LABELS[lang].didnt;
     dispatch("TURN_ABORTED");   // nothing usable; get out of THINKING
@@ -287,8 +305,13 @@ async function send(blob) {
   }
 
   try {
+    trace("send /turn AWAITING", "heard_chars=" + heardCharsForThisTurn);
     const res = await fetch("/turn", { method: "POST", body: form });
+    trace("send /turn STATUS", res.status);
     const data = await res.json();
+    trace("send /turn PARSED", "transcript=" + JSON.stringify(data.transcript),
+          "replyLen=" + (data.reply ? data.reply.length : 0),
+          "timings=" + JSON.stringify(data.timings));
     // `transcript` is non-empty exactly on the path that reaches
     // truncate_last_reply server-side -- server.py returns it empty on all
     // four early-return paths above. That makes it the correct signal for
@@ -311,6 +334,7 @@ async function send(blob) {
     pendingLang = data.lang;
     dispatch("REPLY");
   } catch (err) {
+    trace("send CAUGHT", err && err.name, err && err.message);
     replyEl.textContent = "Something went wrong. Please try again.";
     dispatch("TURN_ABORTED");
   }
@@ -320,6 +344,7 @@ async function send(blob) {
 
 async function speak(text, replyLang) {
   const seq = ++speakSeq;
+  trace("speak ENTER", "seq=" + seq, "lang=" + replyLang, "textLen=" + (text || "").length);
   ttsAwaitingPlayback = true;
   const ctx = audioCtx;   // captured now: a hang-up during the awaits below
                            // can null the global before this resumes
@@ -330,6 +355,7 @@ async function speak(text, replyLang) {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ text, lang: replyLang }),
     });
+    trace("speak /tts STATUS", res.status, "seq=" + seq);
     if (!res.ok) throw new Error(`tts failed: ${res.status}`);
     const bytes = await res.arrayBuffer();
     // The closed-context check sits before decode, not after: a hang-up
