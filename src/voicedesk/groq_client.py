@@ -188,8 +188,22 @@ class GroqLLM:
 
     def _create(self, messages: list[dict], tools: list[dict]):
         """Returns (choice, headers | None)."""
+        # gpt-oss models emit chain-of-thought, and when the API is not told
+        # to withhold it, it can surface inside `content` -- which this app
+        # appends to conversation history and speaks aloud. A caller heard the
+        # model's English internal monologue ("Okay! This conversation got
+        # messed. Need to recover...") read back to them mid-call, in the
+        # middle of a Chinese conversation. Stripping it afterwards would mean
+        # guessing which sentences were meant for the caller; having the API
+        # withhold it is exact, and holds however confused the model gets.
+        #
+        # Sent via extra_body because the installed groq SDK has no typed
+        # parameter for it. A model or endpoint that does not recognise the
+        # field ignores it rather than failing, so this is safe to send
+        # unconditionally.
         kwargs = dict(model=self.model, messages=messages, tools=tools,
-                      tool_choice="auto")
+                      tool_choice="auto",
+                      extra_body={"reasoning_format": "hidden"})
         raw = getattr(self.client.chat.completions, "with_raw_response", None)
         if raw is not None:
             response = raw.create(**kwargs)

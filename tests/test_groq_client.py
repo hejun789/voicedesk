@@ -554,3 +554,31 @@ def test_default_tool_use_retry_budget_survives_five_malformed_calls():
     llm = GroqLLM(client=client)  # default max_retries
     assert llm.complete([], []).content == "booked"
     assert client.calls == 6  # 5 malformed, resampled each time, then success
+
+
+def test_request_asks_the_api_to_withhold_reasoning():
+    # gpt-oss models emit chain-of-thought. When it is not stripped server-side
+    # it can end up inside `content`, which this app appends to history and
+    # reads aloud through TTS -- a Chinese caller heard an English internal
+    # monologue ("Okay! This conversation got messed. Need to recover...")
+    # spoken back to them. Asking the API to withhold it is the only fix that
+    # holds no matter how confused the model gets; stripping it after the fact
+    # would be guesswork about which sentences were meant for the caller.
+    captured = {}
+
+    class _Recording:
+        def __init__(self):
+            outer = self
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=lambda **kw: outer._record(kw)))
+
+        def _record(self, kw):
+            captured.update(kw)
+            return SimpleNamespace(choices=[_fake_choice(content="ok")])
+
+    llm = GroqLLM(api_key="k", model="openai/gpt-oss-120b")
+    llm.client = _Recording()
+    llm.complete([{"role": "user", "content": "hi"}], [])
+
+    assert captured.get("extra_body", {}).get("reasoning_format") == "hidden", \
+        f"reasoning_format not requested; kwargs were {sorted(captured)}"
